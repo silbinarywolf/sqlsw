@@ -83,7 +83,12 @@ func (rows *Rows) ScanStruct(args interface{}) error {
 	} else {
 		values = make([]interface{}, len(columnNames))
 	}
-
+	err = rows.Scan(values...)
+	if err != nil {
+		return err
+	}
+	panic("todo: put values in struct")
+	return rows.Err()
 	/* reflectArgs := dbreflect.ValueOf(args)
 	argList = make([]interface{}, 0, len(parameterNames))
 	for _, parameterName := range rows.argList {
