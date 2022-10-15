@@ -205,7 +205,7 @@ func transformNamedQueryAndParams(bindType bindtype.Kind, query string, args int
 		if t.Kind() != reflect.Struct {
 			return "", nil, &unexpectedNamedParameterError{}
 		}
-		structData, err := dbreflect.GetStruct(t)
+		structData, err := dbreflect.GetStruct(dbreflect.TypeOf(args))
 		if err != nil {
 			return "", nil, err
 		}

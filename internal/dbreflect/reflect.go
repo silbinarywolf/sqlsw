@@ -1,8 +1,6 @@
 package dbreflect
 
-import (
-	"reflect"
-)
+import "reflect"
 
 type Value struct {
 	value reflect.Value
