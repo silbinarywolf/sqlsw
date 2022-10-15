@@ -1,3 +1,3 @@
 module github.com/silbinarywolf/sqlsw
 
-go 1.10
+go 1.16
