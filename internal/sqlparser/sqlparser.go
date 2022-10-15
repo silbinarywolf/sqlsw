@@ -99,7 +99,6 @@ func Parse(query string, options Options) (ParseResult, error) {
 			default:
 				return pr, errors.New("unhandled bind type: " + bindType.String())
 			}
-			queryReplace = append(queryReplace, '?')
 		case '\'', '"':
 			startPos := pos
 			pos += size

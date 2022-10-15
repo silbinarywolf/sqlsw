@@ -23,7 +23,13 @@ type DB struct {
 // Rows is the result of a query. Its cursor starts before the first row
 // of the result set. Use Next to advance from row to row.
 type Rows struct {
-	rows *sql.Rows
+	rows
+}
+
+// rows exists to add another layer of indirection so a user can't change
+// the pointer to Rows it's holding
+type rows struct {
+	*sql.Rows
 }
 
 func Open(driverName, dataSourceName string) (*DB, error) {
@@ -46,12 +52,12 @@ func (db *DB) NamedQueryContext(ctx context.Context, query string, args interfac
 	if err != nil {
 		return nil, err
 	}
-	sqlRows, err := db.db.QueryContext(ctx, query, argList)
+	sqlRows, err := db.db.QueryContext(ctx, query, argList...)
 	if err != nil {
 		return nil, err
 	}
 	r := &Rows{}
-	r.rows = sqlRows
+	r.rows.Rows = sqlRows
 	return r, nil
 }
 
@@ -70,20 +76,20 @@ func (err *missingValueError) Error() string {
 	return `missing value for named parameter: ` + err.fieldName
 }
 
-func transformNamedQueryAndParams(bindType bindtype.Kind, query string, args interface{}) (transformedQuery string, arg interface{}, err error) {
+func transformNamedQueryAndParams(bindType bindtype.Kind, query string, args interface{}) (string, []interface{}, error) {
 	parseResult, err := sqlparser.Parse(query, sqlparser.Options{
 		BindType: bindType,
 	})
 	if err != nil {
 		return "", nil, err
 	}
-	transformedQuery = parseResult.Query
+	transformedQuery := parseResult.Query
 	parameterNames := parseResult.Parameters
 	// note(jae): 2022-10-15
 	// This won't be an exact fit for arguments and will over-allocate
 	// if the same parameter is used twice.
 	argList := make([]interface{}, 0, len(parameterNames))
-	t := reflect.TypeOf(arg)
+	t := reflect.TypeOf(args)
 	k := t.Kind()
 	switch k {
 	case reflect.Map:
@@ -132,10 +138,10 @@ func transformNamedQueryAndParams(bindType bindtype.Kind, query string, args int
 			}
 		}
 	case reflect.Array, reflect.Slice:
-		arrayValue := reflect.ValueOf(arg)
+		arrayValue := reflect.ValueOf(args)
 		arrayLen := arrayValue.Len()
 		if arrayLen == 0 {
-			return "", nil, fmt.Errorf("length of array is 0: %#v", arg)
+			return "", nil, fmt.Errorf("length of array is 0: %#v", args)
 		}
 		argList := make([]interface{}, 0, len(parameterNames)*arrayLen)
 		for i := 0; i < arrayLen; i++ {
@@ -186,7 +192,7 @@ func transformNamedQueryAndParams(bindType bindtype.Kind, query string, args int
 		if k != reflect.Ptr && k != reflect.Struct {
 			return "", nil, &unexpectedNamedParameterError{}
 		}
-		v := reflect.ValueOf(arg)
+		v := reflect.ValueOf(args)
 		if v.Kind() == reflect.Ptr {
 			v = v.Elem()
 			if v.Kind() == reflect.Ptr {
@@ -215,45 +221,3 @@ func transformNamedQueryAndParams(bindType bindtype.Kind, query string, args int
 	}
 	return transformedQuery, argList, nil
 }
-
-/*
-func getArgumentListFromMap(args interface{}, parameterNames []string) ([]interface{}, error) {
-	argList := make([]interface{}, 0, len(parameterNames))
-	switch args := args.(type) {
-	case map[string]interface{}:
-		for _, fieldName := range parameterNames {
-			v, ok := args[fieldName]
-			if !ok {
-				return nil, errors.New(`missing value for named parameter: ` + fieldName)
-			}
-			argList = append(argList, v)
-		}
-	case map[string]string:
-		for _, fieldName := range parameterNames {
-			v, ok := args[fieldName]
-			if !ok {
-				return nil, errors.New(`missing value for named parameter: ` + fieldName)
-			}
-			argList = append(argList, v)
-		}
-	default:
-		// note(jae): 2022-10-15
-		// Slow-path that SQLx uses on map types
-
-		var m map[string]interface{}
-		mtype := reflect.TypeOf(m)
-		t := reflect.TypeOf(args)
-		if !t.ConvertibleTo(mtype) {
-			return nil, errors.New(`invalid map given, unable to convert to map[string]interface{}`)
-		}
-		argMap := reflect.ValueOf(args).Convert(mtype).Interface().(map[string]interface{})
-		for _, fieldName := range parameterNames {
-			v, ok := argMap[fieldName]
-			if !ok {
-				return nil, errors.New(`missing value for named parameter: ` + fieldName)
-			}
-			argList = append(argList, v)
-		}
-	}
-	return argList, nil
-} */
