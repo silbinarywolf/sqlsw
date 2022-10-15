@@ -82,22 +82,22 @@ func GetStruct(typeEl reflect.Type) (*Struct, error) {
 }
 
 func (m *ReflectModule) GetStruct(typeEl reflect.Type) (*Struct, error) {
-	structInfo, err := getStruct(typeEl)
+	/* structInfo, err := getStruct(typeEl)
 	if err != nil {
 		return nil, err
 	}
-	return &structInfo, nil
-	/* key := valueEl.Type()
+	return &structInfo, nil */
+	key := typeEl
 	unassertedStructInfo, ok := m.cachedStructs.Load(key)
 	if ok {
 		return unassertedStructInfo.(*Struct), nil
 	}
-	structInfo, err := getStruct(valueEl)
+	structInfo, err := getStruct(typeEl)
 	if err != nil {
 		return nil, err
 	}
 	m.cachedStructs.Store(key, &structInfo)
-	return &structInfo, nil */
+	return &structInfo, nil
 }
 
 func getStruct(typeEl reflect.Type) (Struct, error) {
