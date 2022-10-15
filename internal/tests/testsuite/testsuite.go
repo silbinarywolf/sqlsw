@@ -29,11 +29,11 @@ func TestRunAll(t *testing.T, db *sqlsw.DB) {
 		if !rows.Next() {
 			t.Fatal("expected a result")
 		}
-		var id int64
-		if err := rows.Scan(&id); err != nil {
+		var record selectQueryStruct
+		if err := rows.ScanStruct(&record); err != nil {
 			t.Fatal(err)
 		}
-		if id == 0 {
+		if record.ID == 0 {
 			t.Fatal("ID should not be zero")
 		}
 	})

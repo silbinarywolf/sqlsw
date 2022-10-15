@@ -55,7 +55,7 @@ func Open(driverName, dataSourceName string) (*DB, error) {
 }
 
 func (db *DB) NamedQueryContext(ctx context.Context, query string, args interface{}) (*Rows, error) {
-	query, argList, err := transformNamedQueryAndParams(db.bindType, query, args)
+	query, argList, err := transformNamedQueryAndParams(db.reflecter, db.bindType, query, args)
 	if err != nil {
 		return nil, err
 	}
@@ -69,72 +69,53 @@ func (db *DB) NamedQueryContext(ctx context.Context, query string, args interfac
 	return r, nil
 }
 
-func (rows *Rows) ScanStruct(args interface{}) error {
+type rowValues struct {
+	values []interface{}
+}
+
+func (rows *Rows) ScanStruct(ptrValue interface{}) error {
+	refType := dbreflect.TypeOf(ptrValue)
+	if refType.Kind() != reflect.Ptr {
+		return errors.New("ScanStruct: must pass a pointer, not a value")
+	}
+	refType = refType.Elem()
+
 	columnNames, err := rows.rows.Columns()
 	if err != nil {
 		return err
 	}
+	// Get values
 	var (
 		values           []interface{}
 		valuesUnderlying [8]interface{}
+		// skippedFieldValue is used to hold skipped values
+		skippedFieldValue interface{}
 	)
-	if len(columnNames) >= len(valuesUnderlying) {
-		values = valuesUnderlying[:len(columnNames)]
-	} else {
-		values = make([]interface{}, len(columnNames))
+	{
+		if len(columnNames) >= len(valuesUnderlying) {
+			values = valuesUnderlying[:len(columnNames)]
+		} else {
+			values = make([]interface{}, len(columnNames))
+		}
+		structData, err := rows.reflecter.GetStruct(refType)
+		if err != nil {
+			return err
+		}
+		reflectArgs := dbreflect.ValueOf(ptrValue)
+		for i, columnName := range columnNames {
+			field, ok := structData.GetFieldByTagName(columnName)
+			if !ok {
+				values[i] = &skippedFieldValue
+				continue
+			}
+			values[i] = field.Addr(reflectArgs)
+		}
 	}
-	err = rows.Scan(values...)
+	err = rows.rows.Scan(values...)
 	if err != nil {
 		return err
 	}
-	panic("todo: put values in struct")
 	return rows.Err()
-	/* reflectArgs := dbreflect.ValueOf(args)
-	argList = make([]interface{}, 0, len(parameterNames))
-	for _, parameterName := range rows.argList {
-		field, ok := structData.GetFieldByTagName(parameterName)
-		if !ok {
-			return errors.New(parameterName + " was not found on struct")
-		}
-		argList = append(argList, field.Interface(reflectArgs))
-	} */
-	/*
-		v := reflect.ValueOf(dest)
-
-		if v.Kind() != reflect.Ptr {
-			return errors.New("must pass a pointer, not a value, to StructScan destination")
-		}
-
-		v = v.Elem()
-
-		if !r.started {
-			columns, err := r.Columns()
-			if err != nil {
-				return err
-			}
-			m := r.Mapper
-
-			r.fields = m.TraversalsByName(v.Type(), columns)
-			// if we are not unsafe and are missing fields, return an error
-			if f, err := missingFields(r.fields); err != nil && !r.unsafe {
-				return fmt.Errorf("missing destination name %s in %T", columns[f], dest)
-			}
-			r.values = make([]interface{}, len(columns))
-			r.started = true
-		}
-
-		err := fieldsByTraversal(v, r.fields, r.values, true)
-		if err != nil {
-			return err
-		}
-		// scan into the struct field pointers and append to our results
-		err = r.Scan(r.values...)
-		if err != nil {
-			return err
-		}
-		return r.Err()
-	*/
-	return nil
 }
 
 type unexpectedNamedParameterError struct {
