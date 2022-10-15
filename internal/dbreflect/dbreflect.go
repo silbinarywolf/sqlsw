@@ -3,8 +3,9 @@ package dbreflect
 
 import (
 	"fmt"
-	"reflect"
 	"sync"
+
+	"reflect"
 )
 
 var defaultModule = ReflectModule{}
@@ -30,22 +31,6 @@ type StructField struct {
 
 type Struct struct {
 	fields []StructField
-}
-
-type Value struct {
-	value reflect.Value
-}
-
-// ValueOf returns a new Value initialized to the concrete value
-// stored in the interface i. ValueOf(nil) returns the zero Value.
-//
-// note(jae): 2022-10-15
-// wrapping this so we can potentially quickly replace with a faster reflect
-// library
-func ValueOf(value interface{}) Value {
-	v := Value{}
-	v.value = reflect.ValueOf(value)
-	return v
 }
 
 func (struc *Struct) GetFieldByTagName(dbTagName string) (*StructField, bool) {
@@ -77,17 +62,17 @@ func (err *reflectProcessErrorList) Error() string {
 	return fmt.Sprintf("%+v", err.errors)
 }
 
-func GetStruct(typeEl reflect.Type) (*Struct, error) {
+func GetStruct(typeEl Type) (*Struct, error) {
 	return defaultModule.GetStruct(typeEl)
 }
 
-func (m *ReflectModule) GetStruct(typeEl reflect.Type) (*Struct, error) {
-	/* structInfo, err := getStruct(typeEl)
+func (m *ReflectModule) GetStruct(typeEl Type) (*Struct, error) {
+	structInfo, err := getStruct(typeEl)
 	if err != nil {
 		return nil, err
 	}
-	return &structInfo, nil */
-	key := typeEl
+	return &structInfo, nil
+	/* key := typeEl
 	unassertedStructInfo, ok := m.cachedStructs.Load(key)
 	if ok {
 		return unassertedStructInfo.(*Struct), nil
@@ -97,10 +82,10 @@ func (m *ReflectModule) GetStruct(typeEl reflect.Type) (*Struct, error) {
 		return nil, err
 	}
 	m.cachedStructs.Store(key, &structInfo)
-	return &structInfo, nil
+	return &structInfo, nil */
 }
 
-func getStruct(typeEl reflect.Type) (Struct, error) {
+func getStruct(typeEl Type) (Struct, error) {
 	var indexesUnderlying [8]int
 	p := ReflectProcessor{}
 	p.indexes = indexesUnderlying[:0]
@@ -113,14 +98,14 @@ func getStruct(typeEl reflect.Type) (Struct, error) {
 	return struc, nil
 }
 
-func (p *ReflectProcessor) processFields(typeEl reflect.Type) {
+func (p *ReflectProcessor) processFields(typeEl Type) {
 	structFieldLen := typeEl.NumField()
 	for i := 0; i < structFieldLen; i++ {
 		// note(jae): 2022-10-15
 		// getting reflect.StructField causes 1-alloc
 		structFieldType := typeEl.Field(i)
-		if structFieldType.Anonymous {
-			fieldType := structFieldType.Type
+		if structFieldType.Anonymous() {
+			fieldType := structFieldType.Type()
 			fieldTypeKind := fieldType.Kind()
 			if fieldTypeKind == reflect.Struct {
 				p.indexes = append(p.indexes, i)
@@ -141,7 +126,7 @@ func (p *ReflectProcessor) processFields(typeEl reflect.Type) {
 		// if !structField.CanSet() {
 		// 	continue
 		// }
-		fullTagInfo, ok := structFieldType.Tag.Lookup("db")
+		fullTagInfo, ok := structFieldType.Tag().Lookup("db")
 		if !ok {
 			// skip if there is no tag on field
 			continue
@@ -179,4 +164,68 @@ func (p *ReflectProcessor) processFields(typeEl reflect.Type) {
 		field.indexes = append(field.indexes, i)
 		p.fields = append(p.fields, field)
 	}
+}
+
+type Value struct {
+	value reflect.Value
+}
+
+// ValueOf returns a new Value initialized to the concrete value
+// stored in the interface i. ValueOf(nil) returns the zero Value.
+//
+// note(jae): 2022-10-15
+// wrapping this so we can potentially quickly replace with a faster reflect
+// library
+func ValueOf(value interface{}) Value {
+	v := Value{}
+	v.value = reflect.ValueOf(value)
+	return v
+}
+
+type Type struct {
+	typ reflect.Type
+}
+
+func TypeOf(value interface{}) Type {
+	v := Type{}
+	v.typ = reflect.TypeOf(value)
+	return v
+}
+
+func (typ Type) Kind() reflect.Kind {
+	return typ.typ.Kind()
+}
+
+func (typ Type) Elem() Type {
+	v := Type{}
+	v.typ = typ.typ.Elem()
+	return v
+}
+
+func (typ Type) NumField() int {
+	return typ.typ.NumField()
+}
+
+func (typ Type) Field(i int) structField {
+	v := structField{}
+	v.field = typ.typ.Field(i)
+	return v
+}
+
+type structField struct {
+	field reflect.StructField
+}
+
+func (structField structField) Anonymous() bool {
+	return structField.field.Anonymous
+}
+
+func (structField structField) Tag() reflect.StructTag {
+	return structField.field.Tag
+}
+
+func (structField structField) Type() Type {
+	v := Type{}
+	v.typ = structField.field.Type
+	return v
 }

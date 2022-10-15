@@ -1,7 +1,6 @@
 package dbreflect
 
 import (
-	"reflect"
 	"testing"
 )
 
@@ -25,7 +24,7 @@ func BenchmarkGetStruct(b *testing.B) {
 
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		structInfo, err := GetStruct(reflect.TypeOf(v))
+		structInfo, err := GetStruct(TypeOf(v))
 		if err != nil {
 			b.Fatal(err)
 		}
