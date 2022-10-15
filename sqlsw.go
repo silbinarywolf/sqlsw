@@ -192,10 +192,9 @@ func transformNamedQueryAndParams(bindType bindtype.Kind, query string, args int
 		if k != reflect.Ptr && k != reflect.Struct {
 			return "", nil, &unexpectedNamedParameterError{}
 		}
-		v := reflect.ValueOf(args)
-		if v.Kind() == reflect.Ptr {
-			v = v.Elem()
-			if v.Kind() == reflect.Ptr {
+		if k == reflect.Ptr {
+			t = t.Elem()
+			if t.Kind() == reflect.Ptr {
 				// Disallow nested pointers
 				//
 				// - MyStruct, *MyStruct = allowed
@@ -203,13 +202,15 @@ func transformNamedQueryAndParams(bindType bindtype.Kind, query string, args int
 				return "", nil, &unexpectedNamedParameterError{}
 			}
 		}
-		if v.Kind() != reflect.Struct {
+		if t.Kind() != reflect.Struct {
 			return "", nil, &unexpectedNamedParameterError{}
 		}
-		structData, err := dbreflect.GetStruct(v.Type())
+		structData, err := dbreflect.GetStruct(t)
 		if err != nil {
 			return "", nil, err
 		}
+		v := reflect.ValueOf(args)
+
 		argList = make([]interface{}, 0, len(parameterNames))
 		for _, parameterName := range parameterNames {
 			field, ok := structData.GetFieldByTagName(parameterName)
