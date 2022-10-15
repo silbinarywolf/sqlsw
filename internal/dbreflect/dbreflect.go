@@ -7,8 +7,6 @@ import (
 	"sync"
 )
 
-var defaultModule = ReflectModule{}
-
 type ReflectModule struct {
 	cachedStructs sync.Map
 }
@@ -59,10 +57,6 @@ func (err *reflectProcessErrorList) Error() string {
 	// todo(jae): 2022-10-15
 	// print each on a line
 	return fmt.Sprintf("%+v", err.errors)
-}
-
-func GetStruct(typeEl Type) (*Struct, error) {
-	return defaultModule.GetStruct(typeEl)
 }
 
 func (m *ReflectModule) GetStruct(typeEl Type) (*Struct, error) {

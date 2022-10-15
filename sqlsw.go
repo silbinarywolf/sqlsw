@@ -15,15 +15,21 @@ import (
 type DB struct {
 	// handle is a database handle from database/sql
 	db *sql.DB
+	dbData
+}
 
+type dbData struct {
 	// bindType is whether parameters are bound with ?, $, @, :Named, etc
 	bindType bindtype.Kind
+	// reflecter handles reflection logic and caching
+	reflecter *dbreflect.ReflectModule
 }
 
 // Rows is the result of a query. Its cursor starts before the first row
 // of the result set. Use Next to advance from row to row.
 type Rows struct {
 	rows
+	dbData
 }
 
 // rows exists to add another layer of indirection so a user can't change
@@ -44,6 +50,7 @@ func Open(driverName, dataSourceName string) (*DB, error) {
 	db := &DB{}
 	db.db = dbDriver
 	db.bindType = bindType
+	db.reflecter = &dbreflect.ReflectModule{}
 	return db, nil
 }
 
@@ -58,7 +65,71 @@ func (db *DB) NamedQueryContext(ctx context.Context, query string, args interfac
 	}
 	r := &Rows{}
 	r.rows.Rows = sqlRows
+	r.dbData = db.dbData
 	return r, nil
+}
+
+func (rows *Rows) ScanStruct(args interface{}) error {
+	columnNames, err := rows.rows.Columns()
+	if err != nil {
+		return err
+	}
+	var (
+		values           []interface{}
+		valuesUnderlying [8]interface{}
+	)
+	if len(columnNames) >= len(valuesUnderlying) {
+		values = valuesUnderlying[:len(columnNames)]
+	} else {
+		values = make([]interface{}, len(columnNames))
+	}
+
+	/* reflectArgs := dbreflect.ValueOf(args)
+	argList = make([]interface{}, 0, len(parameterNames))
+	for _, parameterName := range rows.argList {
+		field, ok := structData.GetFieldByTagName(parameterName)
+		if !ok {
+			return errors.New(parameterName + " was not found on struct")
+		}
+		argList = append(argList, field.Interface(reflectArgs))
+	} */
+	/*
+		v := reflect.ValueOf(dest)
+
+		if v.Kind() != reflect.Ptr {
+			return errors.New("must pass a pointer, not a value, to StructScan destination")
+		}
+
+		v = v.Elem()
+
+		if !r.started {
+			columns, err := r.Columns()
+			if err != nil {
+				return err
+			}
+			m := r.Mapper
+
+			r.fields = m.TraversalsByName(v.Type(), columns)
+			// if we are not unsafe and are missing fields, return an error
+			if f, err := missingFields(r.fields); err != nil && !r.unsafe {
+				return fmt.Errorf("missing destination name %s in %T", columns[f], dest)
+			}
+			r.values = make([]interface{}, len(columns))
+			r.started = true
+		}
+
+		err := fieldsByTraversal(v, r.fields, r.values, true)
+		if err != nil {
+			return err
+		}
+		// scan into the struct field pointers and append to our results
+		err = r.Scan(r.values...)
+		if err != nil {
+			return err
+		}
+		return r.Err()
+	*/
+	return nil
 }
 
 type unexpectedNamedParameterError struct {
@@ -76,7 +147,7 @@ func (err *missingValueError) Error() string {
 	return `missing value for named parameter: ` + err.fieldName
 }
 
-func transformNamedQueryAndParams(bindType bindtype.Kind, query string, args interface{}) (string, []interface{}, error) {
+func transformNamedQueryAndParams(reflecter *dbreflect.ReflectModule, bindType bindtype.Kind, query string, args interface{}) (string, []interface{}, error) {
 	parseResult, err := sqlparser.Parse(query, sqlparser.Options{
 		BindType: bindType,
 	})
@@ -205,7 +276,7 @@ func transformNamedQueryAndParams(bindType bindtype.Kind, query string, args int
 		if t.Kind() != reflect.Struct {
 			return "", nil, &unexpectedNamedParameterError{}
 		}
-		structData, err := dbreflect.GetStruct(dbreflect.TypeOf(args))
+		structData, err := reflecter.GetStruct(dbreflect.TypeOf(args))
 		if err != nil {
 			return "", nil, err
 		}
