@@ -22,8 +22,8 @@ type nestedStruct struct {
 func BenchmarkGetStruct(b *testing.B) {
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		v := reflect.ValueOf(nestedStruct{})
-		structInfo, err := GetStruct(v.Type())
+		v := ValueOf(nestedStruct{})
+		structInfo, err := GetStruct(reflect.TypeOf(v))
 		if err != nil {
 			b.Fatal(err)
 		}
