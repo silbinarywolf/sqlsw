@@ -1,0 +1,39 @@
+package dbreflect
+
+import (
+	"reflect"
+	"testing"
+)
+
+type simpleStruct struct {
+	ID    int64  `db:"ID"`
+	Title string `db:"Title"`
+}
+
+type commonStructForNesting struct {
+	ID int64 `db:"ID"`
+}
+
+type nestedStruct struct {
+	commonStructForNesting
+	Title string `db:"Title"`
+}
+
+func BenchmarkGetStruct(b *testing.B) {
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		structInfo, err := GetStruct(reflect.ValueOf(nestedStruct{}))
+		if err != nil {
+			b.Fatal(err)
+		}
+		if len(structInfo.fields) == 0 {
+			b.Fatal("no fields found on struct")
+		}
+		/* if _, ok := structInfo.fields[0].Interface().(int64); !ok {
+			b.Fatal("fields[0] should be int64")
+		}
+		if _, ok := structInfo.fields[1].Interface().(string); !ok {
+			b.Fatal("fields[1] should be string")
+		} */
+	}
+}

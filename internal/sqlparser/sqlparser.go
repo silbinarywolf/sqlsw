@@ -1,12 +1,20 @@
-package sqlsw
+package sqlparser
 
 import (
 	"errors"
+	"strconv"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/silbinarywolf/sqlsw/internal/bindtype"
 )
 
 type Options struct {
+	BindType bindtype.Kind
+
+	// todo(jae): 2022-10-15
+	// consider supporting legacy sqlx code
+	sqlXBackwardsCompat bool
 }
 
 type ParseResult struct {
@@ -32,6 +40,11 @@ func Parse(query string, options Options) (ParseResult, error) {
 		// Use bytes on the stack while building the new query string
 		queryReplace = stackBytes[:0]
 	}
+	// currentParamIndex is used for bind types that require positional
+	// knowledge such as $ and @.
+	// ie. $0
+	currentParamIndex := 1
+	bindType := options.BindType
 	parameters := pr.parametersUnderlyingData[:0]
 	for pos := 0; pos < len(query); {
 		r, size := utf8.DecodeRuneInString(query[pos:])
@@ -63,6 +76,29 @@ func Parse(query string, options Options) (ParseResult, error) {
 			}
 			name := query[startPos:pos]
 			parameters = append(parameters, name)
+			switch bindType {
+			case bindtype.Question:
+				queryReplace = append(queryReplace, '?')
+			case bindtype.Named:
+				queryReplace = append(queryReplace, ':')
+				queryReplace = appendString(queryReplace, name)
+			case bindtype.Dollar:
+				queryReplace = append(queryReplace, '$')
+				queryReplace = appendString(queryReplace, strconv.Itoa(currentParamIndex))
+				currentParamIndex++
+			case bindtype.At:
+				queryReplace = append(queryReplace, '@')
+				queryReplace = appendString(queryReplace, strconv.Itoa(currentParamIndex))
+				currentParamIndex++
+			case bindtype.Unknown:
+				if options.sqlXBackwardsCompat {
+					queryReplace = append(queryReplace, '?')
+				} else {
+					return pr, errors.New("bind type is not set")
+				}
+			default:
+				return pr, errors.New("unhandled bind type: " + bindType.String())
+			}
 			queryReplace = append(queryReplace, '?')
 		case '\'', '"':
 			startPos := pos

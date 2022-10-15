@@ -1,4 +1,4 @@
-package sqlsw
+package sqlparser
 
 import (
 	"testing"
