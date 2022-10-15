@@ -200,7 +200,7 @@ func transformNamedQueryAndParams(bindType bindtype.Kind, query string, args int
 		if v.Kind() != reflect.Struct {
 			return "", nil, &unexpectedNamedParameterError{}
 		}
-		structData, err := dbreflect.GetStruct(v)
+		structData, err := dbreflect.GetStruct(v.Type())
 		if err != nil {
 			return "", nil, err
 		}
@@ -210,7 +210,7 @@ func transformNamedQueryAndParams(bindType bindtype.Kind, query string, args int
 			if !ok {
 				return "", nil, errors.New(parameterName + " was not found on struct")
 			}
-			argList = append(argList, field.Interface())
+			argList = append(argList, field.Interface(v))
 		}
 	}
 	return transformedQuery, argList, nil

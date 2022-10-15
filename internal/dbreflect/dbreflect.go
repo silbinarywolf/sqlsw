@@ -15,12 +15,17 @@ type ReflectModule struct {
 
 type ReflectProcessor struct {
 	fields []StructField
-	errors []error
+	// indexes represents the current field index depth
+	indexes []int
+	errors  []error
 }
 
 type StructField struct {
-	tagName      string
-	reflectValue reflect.Value
+	tagName string
+	// indexes represents the current field index depth
+	indexes []int
+
+	indexesUnderlying [4]int
 }
 
 type Struct struct {
@@ -37,8 +42,12 @@ func (struc *Struct) GetFieldByTagName(dbTagName string) (*StructField, bool) {
 	return nil, false
 }
 
-func (field *StructField) Interface() interface{} {
-	return field.reflectValue.Interface()
+// Interface returns the struct field value using the provided struct
+func (field *StructField) Interface(structAsReflectValue reflect.Value) interface{} {
+	for _, i := range field.indexes {
+		structAsReflectValue = reflect.Indirect(structAsReflectValue).Field(i)
+	}
+	return structAsReflectValue.Interface()
 }
 
 type reflectProcessErrorList struct {
@@ -51,12 +60,17 @@ func (err *reflectProcessErrorList) Error() string {
 	return fmt.Sprintf("%+v", err.errors)
 }
 
-func GetStruct(valueEl reflect.Value) (*Struct, error) {
-	return defaultModule.GetStruct(valueEl)
+func GetStruct(typeEl reflect.Type) (*Struct, error) {
+	return defaultModule.GetStruct(typeEl)
 }
 
-func (m *ReflectModule) GetStruct(valueEl reflect.Value) (*Struct, error) {
-	key := valueEl.Type()
+func (m *ReflectModule) GetStruct(typeEl reflect.Type) (*Struct, error) {
+	structInfo, err := getStruct(typeEl)
+	if err != nil {
+		return nil, err
+	}
+	return &structInfo, nil
+	/* key := valueEl.Type()
 	unassertedStructInfo, ok := m.cachedStructs.Load(key)
 	if ok {
 		return unassertedStructInfo.(*Struct), nil
@@ -66,12 +80,14 @@ func (m *ReflectModule) GetStruct(valueEl reflect.Value) (*Struct, error) {
 		return nil, err
 	}
 	m.cachedStructs.Store(key, &structInfo)
-	return &structInfo, nil
+	return &structInfo, nil */
 }
 
-func getStruct(valueEl reflect.Value) (Struct, error) {
+func getStruct(typeEl reflect.Type) (Struct, error) {
+	var indexesUnderlying [8]int
 	p := ReflectProcessor{}
-	p.processFields(valueEl)
+	p.indexes = indexesUnderlying[:0]
+	p.processFields(typeEl)
 	if len(p.errors) > 0 {
 		return Struct{}, &reflectProcessErrorList{errors: p.errors}
 	}
@@ -80,11 +96,9 @@ func getStruct(valueEl reflect.Value) (Struct, error) {
 	return struc, nil
 }
 
-func (p *ReflectProcessor) processFields(valueEl reflect.Value) {
-	typeEl := valueEl.Type()
+func (p *ReflectProcessor) processFields(typeEl reflect.Type) {
 	structFieldLen := typeEl.NumField()
 	for i := 0; i < structFieldLen; i++ {
-		structField := valueEl.Field(i)
 		// note(jae): 2022-10-15
 		// getting reflect.StructField causes 1-alloc
 		structFieldType := typeEl.Field(i)
@@ -92,11 +106,15 @@ func (p *ReflectProcessor) processFields(valueEl reflect.Value) {
 			fieldType := structFieldType.Type
 			fieldTypeKind := fieldType.Kind()
 			if fieldTypeKind == reflect.Struct {
-				p.processFields(structField)
+				p.indexes = append(p.indexes, i)
+				p.processFields(fieldType)
+				p.indexes = p.indexes[:len(p.indexes)-1]
 				continue
 			}
 			if fieldTypeKind == reflect.Ptr && fieldType.Elem().Kind() == reflect.Struct {
-				p.processFields(structField.Elem())
+				p.indexes = append(p.indexes, i)
+				p.processFields(fieldType.Elem())
+				p.indexes = p.indexes[:len(p.indexes)-1]
 				continue
 			}
 		}
@@ -139,7 +157,9 @@ func (p *ReflectProcessor) processFields(valueEl reflect.Value) {
 		}
 		field := StructField{}
 		field.tagName = tagName
-		field.reflectValue = structField
+		field.indexes = field.indexesUnderlying[:0]
+		field.indexes = append(field.indexes, p.indexes...)
+		field.indexes = append(field.indexes, i)
 		p.fields = append(p.fields, field)
 	}
 }

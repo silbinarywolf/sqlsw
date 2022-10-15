@@ -22,18 +22,19 @@ type nestedStruct struct {
 func BenchmarkGetStruct(b *testing.B) {
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		structInfo, err := GetStruct(reflect.ValueOf(nestedStruct{}))
+		v := reflect.ValueOf(nestedStruct{})
+		structInfo, err := GetStruct(v.Type())
 		if err != nil {
 			b.Fatal(err)
 		}
 		if len(structInfo.fields) == 0 {
 			b.Fatal("no fields found on struct")
 		}
-		/* if _, ok := structInfo.fields[0].Interface().(int64); !ok {
+		if _, ok := structInfo.fields[0].Interface(v).(int64); !ok {
 			b.Fatal("fields[0] should be int64")
 		}
-		if _, ok := structInfo.fields[1].Interface().(string); !ok {
+		if _, ok := structInfo.fields[1].Interface(v).(string); !ok {
 			b.Fatal("fields[1] should be string")
-		} */
+		}
 	}
 }
