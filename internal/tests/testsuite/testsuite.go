@@ -36,6 +36,5 @@ func TestRunAll(t *testing.T, db *sqlsw.DB) {
 		if id == 0 {
 			t.Fatal("ID should not be zero")
 		}
-		t.Fatal("hah")
 	})
 }

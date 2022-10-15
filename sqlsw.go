@@ -209,15 +209,14 @@ func transformNamedQueryAndParams(bindType bindtype.Kind, query string, args int
 		if err != nil {
 			return "", nil, err
 		}
-		v := reflect.ValueOf(args)
-
+		reflectArgs := dbreflect.ValueOf(args)
 		argList = make([]interface{}, 0, len(parameterNames))
 		for _, parameterName := range parameterNames {
 			field, ok := structData.GetFieldByTagName(parameterName)
 			if !ok {
 				return "", nil, errors.New(parameterName + " was not found on struct")
 			}
-			argList = append(argList, field.Interface(v))
+			argList = append(argList, field.Interface(reflectArgs))
 		}
 	}
 	return transformedQuery, argList, nil

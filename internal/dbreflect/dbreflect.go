@@ -32,6 +32,22 @@ type Struct struct {
 	fields []StructField
 }
 
+type Value struct {
+	value reflect.Value
+}
+
+// ValueOf returns a new Value initialized to the concrete value
+// stored in the interface i. ValueOf(nil) returns the zero Value.
+//
+// note(jae): 2022-10-15
+// wrapping this so we can potentially quickly replace with a faster reflect
+// library
+func ValueOf(value interface{}) Value {
+	v := Value{}
+	v.value = reflect.ValueOf(value)
+	return v
+}
+
 func (struc *Struct) GetFieldByTagName(dbTagName string) (*StructField, bool) {
 	for i := range struc.fields {
 		field := &struc.fields[i]
@@ -43,11 +59,12 @@ func (struc *Struct) GetFieldByTagName(dbTagName string) (*StructField, bool) {
 }
 
 // Interface returns the struct field value using the provided struct
-func (field *StructField) Interface(structAsReflectValue reflect.Value) interface{} {
+func (field *StructField) Interface(structAsReflectValue Value) interface{} {
+	v := structAsReflectValue.value
 	for _, i := range field.indexes {
-		structAsReflectValue = reflect.Indirect(structAsReflectValue).Field(i)
+		v = reflect.Indirect(v).Field(i)
 	}
-	return structAsReflectValue.Interface()
+	return v.Interface()
 }
 
 type reflectProcessErrorList struct {
