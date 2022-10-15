@@ -6,32 +6,33 @@ import (
 	"unicode/utf8"
 )
 
-type Parameter struct {
-	Name string
+type Options struct {
 }
 
 type ParseResult struct {
 	Query      string
 	Parameters []string
 
-	parametersUnderlying [8]string
+	// parametersUnderlyingData will reduce allocs for small interpolation
+	// cases
+	parametersUnderlyingData [4]string
 }
 
 // Parse will
-func Parse(query string) (ParseResult, error) {
+func Parse(query string, options Options) (ParseResult, error) {
 	var (
 		pr         ParseResult
-		stackBytes [128]byte
+		stackBytes [256]byte
 	)
-
 	// Setup query replacement buffer
 	var queryReplace []byte
 	if len(query) > len(stackBytes) {
 		queryReplace = make([]byte, 0, len(query))
 	} else {
+		// Use bytes on the stack while building the new query string
 		queryReplace = stackBytes[:0]
 	}
-	parameters := pr.parametersUnderlying[:0]
+	parameters := pr.parametersUnderlyingData[:0]
 	for pos := 0; pos < len(query); {
 		r, size := utf8.DecodeRuneInString(query[pos:])
 		switch r {
@@ -44,6 +45,21 @@ func Parse(query string) (ParseResult, error) {
 					break
 				}
 				pos += size
+			}
+			if startPos == pos {
+				r, size := utf8.DecodeRuneInString(query[pos:])
+				if r == ':' {
+					// Ignore :: case, ie.
+					// - select 'SRID=4269;POINT(-123 34)'::geography from "MyTable"
+					queryReplace = appendRune(queryReplace, r)
+					queryReplace = appendRune(queryReplace, r)
+					pos += size
+					break
+				}
+				// Ignore non-letter and non-digit after :
+				// - select : "MyData" from "MyTable"
+				queryReplace = appendRune(queryReplace, r)
+				break
 			}
 			name := query[startPos:pos]
 			parameters = append(parameters, name)
