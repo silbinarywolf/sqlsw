@@ -53,6 +53,7 @@ func Open(driverName, dataSourceName string) (*DB, error) {
 	return db, nil
 }
 
+// NamedQueryContext executes a query that returns rows, typically a SELECT.
 func (db *DB) NamedQueryContext(ctx context.Context, query string, structOrMapOrSlice interface{}) (*Rows, error) {
 	query, argList, err := transformNamedQueryAndParams(db.reflector, db.bindType, query, structOrMapOrSlice)
 	if err != nil {
@@ -68,6 +69,7 @@ func (db *DB) NamedQueryContext(ctx context.Context, query string, structOrMapOr
 	return r, nil
 }
 
+// NamedQueryContext executes a query that returns rows, typically a SELECT.
 func (tx *Tx) NamedQueryContext(ctx context.Context, query string, structOrMapOrSlice interface{}) (*Rows, error) {
 	query, argList, err := transformNamedQueryAndParams(tx.reflector, tx.bindType, query, structOrMapOrSlice)
 	if err != nil {
@@ -83,11 +85,13 @@ func (tx *Tx) NamedQueryContext(ctx context.Context, query string, structOrMapOr
 	return r, nil
 }
 
-type NamedQuery interface {
+// namedQuery is an interface for calling NamedQueryContext with a database or transaction
+type namedQuery interface {
 	NamedQueryContext(ctx context.Context, query string, structOrMapOrSlice interface{}) (*Rows, error)
 }
 
-func NamedQueryContext(ctx context.Context, dbOrTx NamedQuery, query string, structOrMapOrSlice interface{}) (*Rows, error) {
+// NamedQueryContext executes a query that returns rows, typically a SELECT.
+func NamedQueryContext(ctx context.Context, dbOrTx namedQuery, query string, structOrMapOrSlice interface{}) (*Rows, error) {
 	switch dbOrTx.(type) {
 	case *DB:
 		return dbOrTx.NamedQueryContext(ctx, query, structOrMapOrSlice)
@@ -197,7 +201,7 @@ func TestOnlyResetCache(t testOrBench, db *DB) {
 	db.reflector = &dbreflect.ReflectModule{}
 }
 
-func transformNamedQueryAndParams(reflector *dbreflect.ReflectModule, bindType bindtype.Kind, query string, args interface{}) (string, []interface{}, error) {
+func transformNamedQueryAndParams(reflector *dbreflect.ReflectModule, bindType bindtype.Kind, query string, mapOrStructOrSlice interface{}) (string, []interface{}, error) {
 	parseResult, err := parseNamedQuery(query, sqlparser.Options{
 		BindType: bindType,
 	})
@@ -205,40 +209,38 @@ func transformNamedQueryAndParams(reflector *dbreflect.ReflectModule, bindType b
 		return "", nil, err
 	}
 	parameterNames := parseResult.Parameters()
-
-	t := reflect.TypeOf(args)
-	k := t.Kind()
 	var argList []interface{}
-	switch k {
-	case reflect.Map:
-		if mapKeyKind := t.Key().Kind(); mapKeyKind != reflect.String {
-			return "", nil, errors.New(`unsupported map key type "` + mapKeyKind.String() + `", must be "string", ie. map[string]interface{} or map[string]string`)
-		}
-		// note(jae): 2022-10-15
-		// This won't be an exact fit for arguments and will over-allocate
-		// if the same parameter is used twice.
+	switch mapOrStructOrSlice := mapOrStructOrSlice.(type) {
+	case map[string]interface{}:
+		// Fast-path for map[string]interface{}
 		argList = make([]interface{}, 0, len(parameterNames))
-		switch args := args.(type) {
-		case map[string]interface{}:
-			for _, fieldName := range parameterNames {
-				v, ok := args[fieldName]
-				if !ok {
-					return "", nil, &missingValueError{fieldName: fieldName}
-				}
-				argList = append(argList, v)
+		for _, fieldName := range parameterNames {
+			v, ok := mapOrStructOrSlice[fieldName]
+			if !ok {
+				return "", nil, &missingValueError{fieldName: fieldName}
 			}
-		case map[string]string:
-			for _, fieldName := range parameterNames {
-				v, ok := args[fieldName]
-				if !ok {
-					return "", nil, &missingValueError{fieldName: fieldName}
-				}
-				argList = append(argList, v)
+			argList = append(argList, v)
+		}
+	case map[string]string:
+		// Fast-path for map[string]string
+		argList = make([]interface{}, 0, len(parameterNames))
+		for _, fieldName := range parameterNames {
+			v, ok := mapOrStructOrSlice[fieldName]
+			if !ok {
+				return "", nil, &missingValueError{fieldName: fieldName}
 			}
-		default:
+			argList = append(argList, v)
+		}
+	default:
+		t := reflect.TypeOf(mapOrStructOrSlice)
+		k := t.Kind()
+		switch k {
+		case reflect.Map:
+			if mapKeyKind := t.Key().Kind(); mapKeyKind != reflect.String {
+				return "", nil, errors.New(`unsupported map key type "` + mapKeyKind.String() + `", must be "string", ie. map[string]interface{} or map[string]string`)
+			}
 			// note(jae): 2022-10-15
-			// Slow-path that SQLx uses on map types
-			//
+			// Slow-path that SQLx uses on map types.
 			// Benchmarking shows this style takes ~100x longer
 			//
 			// Type Assert:
@@ -247,10 +249,10 @@ func transformNamedQueryAndParams(reflector *dbreflect.ReflectModule, bindType b
 			// ValueOf.Convert:
 			// - 44560135	         26.44 ns/op	       0 B/op	       0 allocs/op
 			mtype := reflect.TypeOf(map[string]interface{}{})
-			if !reflect.TypeOf(args).ConvertibleTo(mtype) {
+			if !reflect.TypeOf(mapOrStructOrSlice).ConvertibleTo(mtype) {
 				return "", nil, errors.New(`invalid map given, unable to convert to map[string]interface{}`)
 			}
-			argMap := reflect.ValueOf(args).Convert(mtype).Interface().(map[string]interface{})
+			argMap := reflect.ValueOf(mapOrStructOrSlice).Convert(mtype).Interface().(map[string]interface{})
 			for _, fieldName := range parameterNames {
 				v, ok := argMap[fieldName]
 				if !ok {
@@ -258,92 +260,92 @@ func transformNamedQueryAndParams(reflector *dbreflect.ReflectModule, bindType b
 				}
 				argList = append(argList, v)
 			}
-		}
-	case reflect.Array, reflect.Slice:
-		arrayValue := reflect.ValueOf(args)
-		arrayLen := arrayValue.Len()
-		if arrayLen == 0 {
-			return "", nil, fmt.Errorf("length of array is 0: %#v", args)
-		}
-		// note(jae): 2022-10-15
-		// This won't be an exact fit for arguments and will over-allocate
-		// if the same parameter is used twice.
-		argList = make([]interface{}, 0, len(parameterNames)*arrayLen)
-		for i := 0; i < arrayLen; i++ {
-			switch args := args.(type) {
-			case map[string]interface{}:
-				for _, fieldName := range parameterNames {
-					v, ok := args[fieldName]
-					if !ok {
-						return "", nil, &missingValueError{fieldName: fieldName}
-					}
-					argList = append(argList, v)
-				}
-			case map[string]string:
-				for _, fieldName := range parameterNames {
-					v, ok := args[fieldName]
-					if !ok {
-						return "", nil, &missingValueError{fieldName: fieldName}
-					}
-					argList = append(argList, v)
-				}
-			default:
-				// note(jae): 2022-10-15
-				// Slow-path that SQLx uses on map types
-				//
-				// Benchmarking shows this style takes ~100x longer
-				//
-				// Type Assert:
-				// - 1000000000	         0.3219 ns/op	       0 B/op	       0 allocs/op
-				//
-				// ValueOf.Convert:
-				// - 44560135	         26.44 ns/op	       0 B/op	       0 allocs/op
-				if mtype := reflect.TypeOf(map[string]interface{}{}); reflect.TypeOf(args).ConvertibleTo(mtype) {
-					argMap := reflect.ValueOf(args).Convert(mtype).Interface().(map[string]interface{})
+		case reflect.Array, reflect.Slice:
+			arrayValue := reflect.ValueOf(mapOrStructOrSlice)
+			arrayLen := arrayValue.Len()
+			if arrayLen == 0 {
+				return "", nil, fmt.Errorf("length of array is 0: %#v", mapOrStructOrSlice)
+			}
+			// note(jae): 2022-10-15
+			// This won't be an exact fit for arguments and will over-allocate
+			// if the same parameter is used twice.
+			argList = make([]interface{}, 0, len(parameterNames)*arrayLen)
+			for i := 0; i < arrayLen; i++ {
+				switch args := mapOrStructOrSlice.(type) {
+				case map[string]interface{}:
 					for _, fieldName := range parameterNames {
-						v, ok := argMap[fieldName]
+						v, ok := args[fieldName]
 						if !ok {
 							return "", nil, &missingValueError{fieldName: fieldName}
 						}
 						argList = append(argList, v)
 					}
-				} else {
-					panic("TODO: Bind struct variables")
+				case map[string]string:
+					for _, fieldName := range parameterNames {
+						v, ok := args[fieldName]
+						if !ok {
+							return "", nil, &missingValueError{fieldName: fieldName}
+						}
+						argList = append(argList, v)
+					}
+				default:
+					// note(jae): 2022-10-15
+					// Slow-path that SQLx uses on map types
+					//
+					// Benchmarking shows this style takes ~100x longer
+					//
+					// Type Assert:
+					// - 1000000000	         0.3219 ns/op	       0 B/op	       0 allocs/op
+					//
+					// ValueOf.Convert:
+					// - 44560135	         26.44 ns/op	       0 B/op	       0 allocs/op
+					if mtype := reflect.TypeOf(map[string]interface{}{}); reflect.TypeOf(args).ConvertibleTo(mtype) {
+						argMap := reflect.ValueOf(args).Convert(mtype).Interface().(map[string]interface{})
+						for _, fieldName := range parameterNames {
+							v, ok := argMap[fieldName]
+							if !ok {
+								return "", nil, &missingValueError{fieldName: fieldName}
+							}
+							argList = append(argList, v)
+						}
+					} else {
+						panic("TODO: Bind struct variables")
+					}
 				}
 			}
-		}
-	default:
-		if k != reflect.Ptr && k != reflect.Struct {
-			return "", nil, &unexpectedNamedParameterError{}
-		}
-		if k == reflect.Ptr {
-			t = t.Elem()
-			if t.Kind() == reflect.Ptr {
-				// Disallow nested pointers
-				//
-				// - MyStruct, *MyStruct = allowed
-				// - **MyStruct, ***MyStruct = not allowed
+		default:
+			if k != reflect.Ptr && k != reflect.Struct {
 				return "", nil, &unexpectedNamedParameterError{}
 			}
-		}
-		if t.Kind() != reflect.Struct {
-			return "", nil, &unexpectedNamedParameterError{}
-		}
-		structData, err := reflector.GetStruct(dbreflect.TypeOf(args))
-		if err != nil {
-			return "", nil, err
-		}
-		reflectArgs := dbreflect.ValueOf(args)
-		// note(jae): 2022-10-15
-		// This won't be an exact fit for arguments and will over-allocate
-		// if the same parameter is used twice.
-		argList = make([]interface{}, 0, len(parameterNames))
-		for _, parameterName := range parameterNames {
-			field, ok := structData.GetFieldByName(parameterName)
-			if !ok {
-				return "", nil, errors.New(parameterName + " was not found on struct")
+			if k == reflect.Ptr {
+				t = t.Elem()
+				if t.Kind() == reflect.Ptr {
+					// Disallow nested pointers
+					//
+					// - MyStruct, *MyStruct = allowed
+					// - **MyStruct, ***MyStruct = not allowed
+					return "", nil, &unexpectedNamedParameterError{}
+				}
 			}
-			argList = append(argList, field.Interface(reflectArgs))
+			if t.Kind() != reflect.Struct {
+				return "", nil, &unexpectedNamedParameterError{}
+			}
+			structData, err := reflector.GetStruct(dbreflect.TypeOf(mapOrStructOrSlice))
+			if err != nil {
+				return "", nil, err
+			}
+			reflectArgs := dbreflect.ValueOf(mapOrStructOrSlice)
+			// note(jae): 2022-10-15
+			// This won't be an exact fit for arguments and will over-allocate
+			// if the same parameter is used twice.
+			argList = make([]interface{}, 0, len(parameterNames))
+			for _, parameterName := range parameterNames {
+				field, ok := structData.GetFieldByName(parameterName)
+				if !ok {
+					return "", nil, errors.New(parameterName + " was not found on struct")
+				}
+				argList = append(argList, field.Interface(reflectArgs))
+			}
 		}
 	}
 	return parseResult.Query(), argList, nil
