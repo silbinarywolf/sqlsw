@@ -13,30 +13,18 @@ import (
 )
 
 type DB struct {
-	db sql.DB
-	dbData
+	db *sql.DB
+	dataAndCaching
 }
 
-type dbData struct {
-	// bindType is whether parameters are bound with ?, $, @, :Named, etc
-	bindType bindtype.Kind
-	// reflector handles reflection logic and caching
-	reflector *dbreflect.ReflectModule
-}
-
-// Rows is the result of a query. Its cursor starts before the first row
-// of the result set. Use Next to advance from row to row.
-type Rows struct {
-	*sql.Rows
-	dbData
-}
-
-// Tx is an in-progress database transaction.
-type Tx struct {
-	*sql.Tx
-	dbData
-}
-
+// Open opens a database specified by its database driver name and a
+// driver-specific data source name, usually consisting of at least a
+// database name and connection information.
+//
+// The returned DB is safe for concurrent use by multiple goroutines
+// and maintains its own pool of idle connections. Thus, the Open
+// function should be called just once. It is rarely necessary to
+// close a DB.
 func Open(driverName, dataSourceName string) (*DB, error) {
 	dbDriver, err := sql.Open(driverName, dataSourceName)
 	if err != nil {
@@ -47,10 +35,92 @@ func Open(driverName, dataSourceName string) (*DB, error) {
 		return nil, errors.New("unable to get bind type for driver: " + driverName + "\nUse RegisterBindType to define how your database handles bound parameters.")
 	}
 	db := &DB{}
-	db.db = *dbDriver
+	db.db = dbDriver
 	db.bindType = bindType
 	db.reflector = &dbreflect.ReflectModule{}
 	return db, nil
+}
+
+// DB returns the underlying "database/sql" handle
+func (db *DB) DB() *sql.DB { return db.db }
+
+// dataAndCaching is extra information stored on db and passed around statements and transactions
+type dataAndCaching struct {
+	// bindType is whether parameters are bound with ?, $, @, :Named, etc
+	bindType bindtype.Kind
+	// reflector handles reflection logic and caching
+	reflector *dbreflect.ReflectModule
+}
+
+// Rows is the result of a query. Its cursor starts before the first row
+// of the result set. Use Next to advance from row to row.
+type Rows struct {
+	rows *sql.Rows
+	dataAndCaching
+}
+
+// Close closes the Rows, preventing further enumeration. If Next is called
+// and returns false and there are no further result sets,
+// the Rows are closed automatically and it will suffice to check the
+// result of Err. Close is idempotent and does not affect the result of Err.
+func (rows *Rows) Close() error {
+	return rows.rows.Close()
+}
+
+// Err returns the error, if any, that was encountered during iteration.
+// Err may be called after an explicit or implicit Close.
+func (rows *Rows) Err() error {
+	return rows.rows.Err()
+}
+
+func newRows(rows *sql.Rows, data dataAndCaching) *Rows {
+	r := &Rows{}
+	r.rows = rows
+	r.dataAndCaching = data
+	return r
+}
+
+// Tx is an in-progress database transaction.
+type Tx struct {
+	underlying *sql.Tx
+	dataAndCaching
+}
+
+// Commit commits the transaction.
+func (tx *Tx) Commit() error {
+	return tx.underlying.Commit()
+}
+
+// Rollback aborts the transaction.
+func (tx *Tx) Rollback() error {
+	return tx.underlying.Rollback()
+}
+
+// NamedStmt is a prepared statement.
+// A NamedStmt is safe for concurrent use by multiple goroutines.
+type NamedStmt struct {
+	underlying *sql.Stmt
+	dataAndCaching
+	pr sqlparser.ParseResult
+}
+
+// NamedPrepareContext creates a prepared statement for later queries or executions.
+func (db *DB) NamedPrepareContext(ctx context.Context, query string) (*NamedStmt, error) {
+	parseResult, err := parseNamedQuery(query, sqlparser.Options{
+		BindType: db.bindType,
+	})
+	if err != nil {
+		return nil, err
+	}
+	stmtUnderlying, err := db.db.PrepareContext(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	stmt := &NamedStmt{}
+	stmt.underlying = stmtUnderlying
+	stmt.dataAndCaching = db.dataAndCaching
+	stmt.pr = parseResult
+	return stmt, nil
 }
 
 // NamedQueryContext executes a query that returns rows, typically a SELECT.
@@ -59,14 +129,11 @@ func (db *DB) NamedQueryContext(ctx context.Context, query string, structOrMapOr
 	if err != nil {
 		return nil, err
 	}
-	sqlRows, err := db.db.QueryContext(ctx, query, argList...)
+	rows, err := db.db.QueryContext(ctx, query, argList...)
 	if err != nil {
 		return nil, err
 	}
-	r := &Rows{}
-	r.Rows = sqlRows
-	r.dbData = db.dbData
-	return r, nil
+	return newRows(rows, db.dataAndCaching), nil
 }
 
 // NamedQueryContext executes a query that returns rows, typically a SELECT.
@@ -75,14 +142,24 @@ func (tx *Tx) NamedQueryContext(ctx context.Context, query string, structOrMapOr
 	if err != nil {
 		return nil, err
 	}
-	sqlRows, err := tx.QueryContext(ctx, query, argList...)
+	rows, err := tx.underlying.QueryContext(ctx, query, argList...)
 	if err != nil {
 		return nil, err
 	}
-	r := &Rows{}
-	r.Rows = sqlRows
-	r.dbData = tx.dbData
-	return r, nil
+	return newRows(rows, tx.dataAndCaching), nil
+}
+
+// NamedQueryContext executes a query that returns rows, typically a SELECT.
+func (stmt *NamedStmt) NamedQueryContext(ctx context.Context, query string, structOrMapOrSlice interface{}) (*Rows, error) {
+	query, argList, err := transformNamedQueryAndParams(stmt.reflector, stmt.bindType, query, structOrMapOrSlice)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := stmt.underlying.QueryContext(ctx, argList...)
+	if err != nil {
+		return nil, err
+	}
+	return newRows(rows, stmt.dataAndCaching), nil
 }
 
 // namedQuery is an interface for calling NamedQueryContext with a database or transaction
@@ -111,7 +188,7 @@ func (rows *Rows) ScanStruct(ptrValue interface{}) error {
 	if refType.Kind() != reflect.Struct {
 		return errors.New("ScanStruct: must pass a pointer to struct, not " + refType.Kind().String())
 	}
-	columnNames, err := rows.Columns()
+	columnNames, err := rows.rows.Columns()
 	if err != nil {
 		return err
 	}
@@ -143,7 +220,7 @@ func (rows *Rows) ScanStruct(ptrValue interface{}) error {
 			values[i] = field.Addr(reflectArgs)
 		}
 	}
-	err = rows.Scan(values...)
+	err = rows.rows.Scan(values...)
 	if err != nil {
 		return err
 	}
@@ -187,18 +264,6 @@ func parseNamedQuery(query string, options sqlparser.Options) (sqlparser.ParseRe
 	}
 	cachedNamedQuery.Store(query, parseResult)
 	return parseResult, nil */
-}
-
-type testOrBench interface {
-	Fatal(args ...interface{})
-	Fatalf(format string, args ...interface{})
-}
-
-// TestOnlyResetCache will reset all caching logic on the DB struct
-//
-// This should be used for testing and benchmarking purposes only.
-func TestOnlyResetCache(t testOrBench, db *DB) {
-	db.reflector = &dbreflect.ReflectModule{}
 }
 
 func transformNamedQueryAndParams(reflector *dbreflect.ReflectModule, bindType bindtype.Kind, query string, mapOrStructOrSlice interface{}) (string, []interface{}, error) {
@@ -349,4 +414,17 @@ func transformNamedQueryAndParams(reflector *dbreflect.ReflectModule, bindType b
 		}
 	}
 	return parseResult.Query(), argList, nil
+}
+
+// testOrBench is an interface for testing.T or testing.B
+type testOrBench interface {
+	Fatal(args ...interface{})
+	Fatalf(format string, args ...interface{})
+}
+
+// TestOnlyResetCache will reset all caching logic on the DB struct
+//
+// This should be used for testing and benchmarking purposes only.
+func TestOnlyResetCache(t testOrBench, db *DB) {
+	db.reflector = &dbreflect.ReflectModule{}
 }
