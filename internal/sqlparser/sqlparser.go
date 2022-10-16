@@ -115,7 +115,7 @@ func Parse(query string, options Options) (ParseResult, error) {
 			default:
 				return ParseResult{}, errors.New("unhandled bind type: " + bindType.String())
 			}
-		case '\'', '"':
+		case '\'', '"', '`':
 			startPos := pos
 			pos += size
 
