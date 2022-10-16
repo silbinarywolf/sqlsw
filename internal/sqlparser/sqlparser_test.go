@@ -52,11 +52,11 @@ func TestParseSelect(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if testCase.ExpectedQuery != r.Query {
-			t.Errorf("test case %d/%d: Query expected to be:\n`%s`\nnot\n`%s`", testCaseNumber, len(goldenTests), testCase.ExpectedQuery, r.Query)
+		if testCase.ExpectedQuery != r.Query() {
+			t.Errorf("test case %d/%d: Query expected to be:\n`%s`\nnot\n`%s`", testCaseNumber, len(goldenTests), testCase.ExpectedQuery, r.Query())
 		}
-		if len(testCase.ExpectedParameters) != len(r.Parameters) {
-			t.Errorf("test case %d/%d: Parameters expected to be:\n`%+v`\nnot\n`%+v`", testCaseNumber, len(goldenTests), testCase.ExpectedParameters, r.Parameters)
+		if len(testCase.ExpectedParameters) != len(r.Parameters()) {
+			t.Errorf("test case %d/%d: Parameters expected to be:\n`%+v`\nnot\n`%+v`", testCaseNumber, len(goldenTests), testCase.ExpectedParameters, r.Parameters())
 		}
 	}
 }

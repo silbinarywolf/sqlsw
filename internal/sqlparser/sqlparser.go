@@ -21,20 +21,28 @@ type Options struct {
 }
 
 type ParseResult struct {
-	Query      string
-	Parameters []string
+	query      string
+	parameters []string
+}
 
-	// parametersUnderlyingData will reduce allocs for small interpolation
-	// cases
-	parametersUnderlyingData [4]string
+func (pr *ParseResult) Query() string {
+	return pr.query
+}
+
+func (pr *ParseResult) Parameters() []string {
+	return pr.parameters
+}
+
+func (ps *ParseResult) appendParameter(parameter string) {
+	ps.parameters = append(ps.parameters, parameter)
 }
 
 // Parse will take a query string and return the query but replace the interpolated
 // names with the bind type ($1, ?, @1, etc) and a list of parameters
 func Parse(query string, options Options) (ParseResult, error) {
 	var (
-		pr         ParseResult
-		stackBytes [256]byte
+		stackBytes      [256]byte
+		stackParameters [8]string
 	)
 	// Setup query replacement buffer
 	var queryReplace []byte
@@ -49,7 +57,9 @@ func Parse(query string, options Options) (ParseResult, error) {
 	// ie. $0
 	currentParamIndex := 1
 	bindType := options.BindType
-	parameters := pr.parametersUnderlyingData[:0]
+
+	var pr ParseResult
+	pr.parameters = stackParameters[:0]
 	for pos := 0; pos < len(query); {
 		r, size := utf8.DecodeRuneInString(query[pos:])
 		switch r {
@@ -79,7 +89,7 @@ func Parse(query string, options Options) (ParseResult, error) {
 				break
 			}
 			name := query[startPos:pos]
-			parameters = append(parameters, name)
+			pr.appendParameter(name)
 			switch bindType {
 			case bindtype.Question:
 				queryReplace = append(queryReplace, '?')
@@ -98,10 +108,10 @@ func Parse(query string, options Options) (ParseResult, error) {
 				if options.sqlXBackwardsCompat {
 					queryReplace = append(queryReplace, '?')
 				} else {
-					return pr, errors.New("bind type is not set")
+					return ParseResult{}, errors.New("bind type is not set")
 				}
 			default:
-				return pr, errors.New("unhandled bind type: " + bindType.String())
+				return ParseResult{}, errors.New("unhandled bind type: " + bindType.String())
 			}
 		case '\'', '"':
 			startPos := pos
@@ -117,7 +127,7 @@ func Parse(query string, options Options) (ParseResult, error) {
 				}
 			}
 			if !foundMatch {
-				return pr, errors.New(`missing matching ` + string(r) + " character between `" + query[startPos:] + "`")
+				return ParseResult{}, errors.New(`missing matching ` + string(r) + " character between `" + query[startPos:] + "`")
 			}
 			queryReplace = appendString(queryReplace, query[startPos:pos])
 		default:
@@ -125,8 +135,7 @@ func Parse(query string, options Options) (ParseResult, error) {
 			queryReplace = appendRune(queryReplace, r)
 		}
 	}
-	pr.Query = string(queryReplace)
-	pr.Parameters = parameters
+	pr.query = string(queryReplace)
 	return pr, nil
 }
 

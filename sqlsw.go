@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
-	"sync"
 
 	"github.com/silbinarywolf/sqlsw/internal/bindtype"
 	"github.com/silbinarywolf/sqlsw/internal/dbreflect"
@@ -145,10 +144,15 @@ func (err *missingValueError) Error() string {
 	return `missing value for named parameter: ` + err.fieldName
 }
 
-var cachedNamedQuery sync.Map
-
 func parseNamedQuery(query string, options sqlparser.Options) (sqlparser.ParseResult, error) {
-	unassertedParsedResult, ok := cachedNamedQuery.Load(query)
+	// not-cached
+	return sqlparser.Parse(query, options)
+
+	// cached
+	// - the savings aren't high enough to justify this
+	// - this logic is also incorrect, doesn't use bind type in key
+	// - requires re-adding "var cachedNamedQuery sync.Map"
+	/* unassertedParsedResult, ok := cachedNamedQuery.Load(query)
 	if ok {
 		return unassertedParsedResult.(sqlparser.ParseResult), nil
 	}
@@ -157,7 +161,7 @@ func parseNamedQuery(query string, options sqlparser.Options) (sqlparser.ParseRe
 		return parseResult, err
 	}
 	cachedNamedQuery.Store(query, parseResult)
-	return parseResult, nil
+	return parseResult, nil */
 }
 
 func transformNamedQueryAndParams(reflector *dbreflect.ReflectModule, bindType bindtype.Kind, query string, args interface{}) (string, []interface{}, error) {
@@ -167,19 +171,21 @@ func transformNamedQueryAndParams(reflector *dbreflect.ReflectModule, bindType b
 	if err != nil {
 		return "", nil, err
 	}
-	transformedQuery := parseResult.Query
-	parameterNames := parseResult.Parameters
-	// note(jae): 2022-10-15
-	// This won't be an exact fit for arguments and will over-allocate
-	// if the same parameter is used twice.
-	argList := make([]interface{}, 0, len(parameterNames))
+	transformedQuery := parseResult.Query()
+	parameterNames := parseResult.Parameters()
+
 	t := reflect.TypeOf(args)
 	k := t.Kind()
+	var argList []interface{}
 	switch k {
 	case reflect.Map:
 		if mapKeyKind := t.Key().Kind(); mapKeyKind != reflect.String {
 			return "", nil, errors.New(`unsupported map key type "` + mapKeyKind.String() + `", must be "string", ie. map[string]interface{}`)
 		}
+		// note(jae): 2022-10-15
+		// This won't be an exact fit for arguments and will over-allocate
+		// if the same parameter is used twice.
+		argList = make([]interface{}, 0, len(parameterNames))
 		switch args := args.(type) {
 		case map[string]interface{}:
 			for _, fieldName := range parameterNames {
@@ -227,7 +233,10 @@ func transformNamedQueryAndParams(reflector *dbreflect.ReflectModule, bindType b
 		if arrayLen == 0 {
 			return "", nil, fmt.Errorf("length of array is 0: %#v", args)
 		}
-		argList := make([]interface{}, 0, len(parameterNames)*arrayLen)
+		// note(jae): 2022-10-15
+		// This won't be an exact fit for arguments and will over-allocate
+		// if the same parameter is used twice.
+		argList = make([]interface{}, 0, len(parameterNames)*arrayLen)
 		for i := 0; i < arrayLen; i++ {
 			switch args := args.(type) {
 			case map[string]interface{}:
@@ -266,7 +275,6 @@ func transformNamedQueryAndParams(reflector *dbreflect.ReflectModule, bindType b
 						}
 						argList = append(argList, v)
 					}
-					return "", nil, errors.New(`invalid map given, unable to convert to map[string]interface{}`)
 				} else {
 					panic("TODO: Bind struct variables")
 				}
@@ -294,6 +302,9 @@ func transformNamedQueryAndParams(reflector *dbreflect.ReflectModule, bindType b
 			return "", nil, err
 		}
 		reflectArgs := dbreflect.ValueOf(args)
+		// note(jae): 2022-10-15
+		// This won't be an exact fit for arguments and will over-allocate
+		// if the same parameter is used twice.
 		argList = make([]interface{}, 0, len(parameterNames))
 		for _, parameterName := range parameterNames {
 			field, ok := structData.GetFieldByName(parameterName)
