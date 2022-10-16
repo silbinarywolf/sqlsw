@@ -9,6 +9,9 @@ import (
 	"github.com/silbinarywolf/sqlsw/internal/bindtype"
 )
 
+// Test inlining/heap escapes
+// go build -gcflags=-m=2
+
 type Options struct {
 	BindType bindtype.Kind
 
@@ -26,7 +29,8 @@ type ParseResult struct {
 	parametersUnderlyingData [4]string
 }
 
-// Parse will
+// Parse will take a query string and return the query but replace the interpolated
+// names with the bind type ($1, ?, @1, etc) and a list of parameters
 func Parse(query string, options Options) (ParseResult, error) {
 	var (
 		pr         ParseResult

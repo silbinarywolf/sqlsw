@@ -24,3 +24,14 @@ func BenchmarkNamedQueryContextWithScanStruct(b *testing.B) {
 		testsuite.NamedQueryContextWithScanStruct(b, db)
 	}
 }
+
+// standard reflect
+// ----------------
+// BenchmarkQueryContextWithScan-12    	    1062	   1168498 ns/op	     656 B/op	      17 allocs/op
+// BenchmarkQueryContextWithScan-12    	    1000	   1120683 ns/op	     656 B/op	      17 allocs/op
+// BenchmarkQueryContextWithScan-12    	    1041	   1165816 ns/op	     656 B/op	      17 allocs/op
+func BenchmarkQueryContextWithScan(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		testsuite.QueryContextWithScan(b, db)
+	}
+}

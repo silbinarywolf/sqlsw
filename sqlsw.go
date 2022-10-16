@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"sync"
 
 	"github.com/silbinarywolf/sqlsw/internal/bindtype"
 	"github.com/silbinarywolf/sqlsw/internal/dbreflect"
@@ -13,16 +14,22 @@ import (
 )
 
 type DB struct {
-	// handle is a database handle from database/sql
-	db *sql.DB
+	dbWrapper
 	dbData
+}
+
+// dbWrapper exists to add another layer of indirection so a user can't change
+// the pointer to DB it's holding
+type dbWrapper struct {
+	// DB handle is a database handle from database/sql
+	*sql.DB
 }
 
 type dbData struct {
 	// bindType is whether parameters are bound with ?, $, @, :Named, etc
 	bindType bindtype.Kind
-	// reflecter handles reflection logic and caching
-	reflecter *dbreflect.ReflectModule
+	// reflector handles reflection logic and caching
+	reflector *dbreflect.ReflectModule
 }
 
 // Rows is the result of a query. Its cursor starts before the first row
@@ -30,10 +37,6 @@ type dbData struct {
 type Rows struct {
 	rows
 	dbData
-
-	// scanStruct cached values
-	columns []string
-	values  []interface{}
 }
 
 // rows exists to add another layer of indirection so a user can't change
@@ -52,18 +55,18 @@ func Open(driverName, dataSourceName string) (*DB, error) {
 		return nil, errors.New("unable to get bind type for driver: " + driverName + "\nUse RegisterBindType to define how your database handles bound parameters.")
 	}
 	db := &DB{}
-	db.db = dbDriver
+	db.dbWrapper.DB = dbDriver
 	db.bindType = bindType
-	db.reflecter = &dbreflect.ReflectModule{}
+	db.reflector = &dbreflect.ReflectModule{}
 	return db, nil
 }
 
 func (db *DB) NamedQueryContext(ctx context.Context, query string, args interface{}) (*Rows, error) {
-	query, argList, err := transformNamedQueryAndParams(db.reflecter, db.bindType, query, args)
+	query, argList, err := transformNamedQueryAndParams(db.reflector, db.bindType, query, args)
 	if err != nil {
 		return nil, err
 	}
-	sqlRows, err := db.db.QueryContext(ctx, query, argList...)
+	sqlRows, err := db.dbWrapper.QueryContext(ctx, query, argList...)
 	if err != nil {
 		return nil, err
 	}
@@ -106,7 +109,7 @@ func (rows *Rows) ScanStruct(ptrValue interface{}) error {
 		} else {
 			values = make([]interface{}, len(columnNames))
 		}
-		structData, err := rows.reflecter.GetStruct(refType)
+		structData, err := rows.reflector.GetStruct(refType)
 		if err != nil {
 			return err
 		}
@@ -142,8 +145,23 @@ func (err *missingValueError) Error() string {
 	return `missing value for named parameter: ` + err.fieldName
 }
 
-func transformNamedQueryAndParams(reflecter *dbreflect.ReflectModule, bindType bindtype.Kind, query string, args interface{}) (string, []interface{}, error) {
-	parseResult, err := sqlparser.Parse(query, sqlparser.Options{
+var cachedNamedQuery sync.Map
+
+func parseNamedQuery(query string, options sqlparser.Options) (sqlparser.ParseResult, error) {
+	unassertedParsedResult, ok := cachedNamedQuery.Load(query)
+	if ok {
+		return unassertedParsedResult.(sqlparser.ParseResult), nil
+	}
+	parseResult, err := sqlparser.Parse(query, options)
+	if err != nil {
+		return parseResult, err
+	}
+	cachedNamedQuery.Store(query, parseResult)
+	return parseResult, nil
+}
+
+func transformNamedQueryAndParams(reflector *dbreflect.ReflectModule, bindType bindtype.Kind, query string, args interface{}) (string, []interface{}, error) {
+	parseResult, err := parseNamedQuery(query, sqlparser.Options{
 		BindType: bindType,
 	})
 	if err != nil {
@@ -271,7 +289,7 @@ func transformNamedQueryAndParams(reflecter *dbreflect.ReflectModule, bindType b
 		if t.Kind() != reflect.Struct {
 			return "", nil, &unexpectedNamedParameterError{}
 		}
-		structData, err := reflecter.GetStruct(dbreflect.TypeOf(args))
+		structData, err := reflector.GetStruct(dbreflect.TypeOf(args))
 		if err != nil {
 			return "", nil, err
 		}

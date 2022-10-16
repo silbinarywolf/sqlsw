@@ -2,6 +2,8 @@ package sqlparser
 
 import (
 	"testing"
+
+	"github.com/silbinarywolf/sqlsw/internal/bindtype"
 )
 
 const (
@@ -17,6 +19,9 @@ func BenchmarkParseSelect(b *testing.B) {
 
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
+		if testCase.Options.BindType == 0 {
+			testCase.Options.BindType = bindtype.Question
+		}
 		r, err := Parse(testCase.Query, testCase.Options)
 		if err != nil {
 			b.Fatal(err)

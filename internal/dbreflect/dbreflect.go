@@ -90,11 +90,13 @@ func (err *reflectProcessErrorList) Error() string {
 }
 
 func (m *ReflectModule) GetStruct(typeEl Type) (*Struct, error) {
+	// uncached
 	/* structInfo, err := getStruct(typeEl)
 	if err != nil {
 		return nil, err
 	}
 	return &structInfo, nil */
+	// cached
 	key := typeEl
 	unassertedStructInfo, ok := m.cachedStructs.Load(key)
 	if ok {
