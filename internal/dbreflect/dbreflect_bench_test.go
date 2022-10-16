@@ -19,12 +19,13 @@ type nestedStruct struct {
 }
 
 func BenchmarkGetStruct(b *testing.B) {
+	m := ReflectModule{}
 	v := nestedStruct{}
 	reflectValue := ValueOf(v)
 
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		structInfo, err := GetStruct(TypeOf(v))
+		structInfo, err := m.GetStruct(TypeOf(v))
 		if err != nil {
 			b.Fatal(err)
 		}

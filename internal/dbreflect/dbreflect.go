@@ -21,6 +21,7 @@ type ReflectProcessor struct {
 type StructField struct {
 	tagName string
 	// indexes represents the current field index depth
+	// ie. [0] = first field of struct, [0][1] = first field of struct, second field of sub-struct
 	indexes []int
 
 	indexesUnderlying [4]int
@@ -30,10 +31,10 @@ type Struct struct {
 	fields []StructField
 }
 
-func (struc *Struct) GetFieldByTagName(dbTagName string) (*StructField, bool) {
+func (struc *Struct) GetFieldByName(fieldName string) (*StructField, bool) {
 	for i := range struc.fields {
 		field := &struc.fields[i]
-		if field.tagName == dbTagName {
+		if field.tagName == fieldName {
 			return field, true
 		}
 	}
@@ -89,6 +90,11 @@ func (err *reflectProcessErrorList) Error() string {
 }
 
 func (m *ReflectModule) GetStruct(typeEl Type) (*Struct, error) {
+	/* structInfo, err := getStruct(typeEl)
+	if err != nil {
+		return nil, err
+	}
+	return &structInfo, nil */
 	key := typeEl
 	unassertedStructInfo, ok := m.cachedStructs.Load(key)
 	if ok {

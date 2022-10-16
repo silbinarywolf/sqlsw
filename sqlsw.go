@@ -94,7 +94,8 @@ func (rows *Rows) ScanStruct(ptrValue interface{}) error {
 	}
 	// Get values
 	var (
-		values           []interface{}
+		values []interface{}
+		// temporary array used on stack
 		valuesUnderlying [8]interface{}
 		// skippedFieldValue is used to hold skipped values
 		skippedFieldValue interface{}
@@ -111,7 +112,7 @@ func (rows *Rows) ScanStruct(ptrValue interface{}) error {
 		}
 		reflectArgs := dbreflect.ValueOf(ptrValue)
 		for i, columnName := range columnNames {
-			field, ok := structData.GetFieldByTagName(columnName)
+			field, ok := structData.GetFieldByName(columnName)
 			if !ok {
 				values[i] = &skippedFieldValue
 				continue
@@ -277,7 +278,7 @@ func transformNamedQueryAndParams(reflecter *dbreflect.ReflectModule, bindType b
 		reflectArgs := dbreflect.ValueOf(args)
 		argList = make([]interface{}, 0, len(parameterNames))
 		for _, parameterName := range parameterNames {
-			field, ok := structData.GetFieldByTagName(parameterName)
+			field, ok := structData.GetFieldByName(parameterName)
 			if !ok {
 				return "", nil, errors.New(parameterName + " was not found on struct")
 			}
