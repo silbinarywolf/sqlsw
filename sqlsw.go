@@ -219,6 +219,71 @@ func NamedQueryContext(ctx context.Context, dbOrTx namedQuery, query string, str
 	return nil, errors.New("unable to execute NamedQueryContext, must be database or transaction")
 }
 
+// Row is the result of calling QueryRow to select a single row.
+type Row struct {
+	err  error
+	rows Rows
+}
+
+// ScanStruct copies the columns in the current row into the given struct.
+//
+// If more than one row matches the query,
+// Scan uses the first row and discards the rest. If no row matches
+// the query, Scan returns ErrNoRows.
+func (r *Row) ScanStruct(dest interface{}) error {
+	if r.err != nil {
+		return r.err
+	}
+	defer r.rows.Close()
+	if !r.rows.Next() {
+		if err := r.rows.Err(); err != nil {
+			return err
+		}
+		return sql.ErrNoRows
+	}
+	err := r.rows.ScanStruct(dest)
+	if err != nil {
+		return err
+	}
+	// Make sure the query can be processed to completion with no errors.
+	return r.rows.Close()
+}
+
+// Err provides a way for wrapping packages to check for
+// query errors without calling Scan.
+// Err returns the error, if any, that was encountered while running the query.
+// If this error is not nil, this error will also be returned from Scan.
+func (r *Row) Err() error {
+	return r.err
+}
+
+// NamedQueryRowContext executes a named prepared query statement with the given arguments.
+func (db *DB) NamedQueryRowContext(ctx context.Context, query string, structOrMapOrSlice interface{}) *Row {
+	rows, err := db.NamedQueryContext(ctx, query, structOrMapOrSlice)
+	if err != nil {
+		return &Row{err: err}
+	}
+	return &Row{rows: *rows}
+}
+
+// NamedQueryRowContext executes a named prepared query statement with the given arguments.
+func (tx *Tx) NamedQueryRowContext(ctx context.Context, query string, structOrMapOrSlice interface{}) *Row {
+	rows, err := tx.NamedQueryContext(ctx, query, structOrMapOrSlice)
+	if err != nil {
+		return &Row{err: err}
+	}
+	return &Row{rows: *rows}
+}
+
+// NamedQueryRowContext executes a named prepared query statement with the given arguments.
+func (stmt *NamedStmt) NamedQueryRowContext(ctx context.Context, structOrMapOrSlice interface{}) *Row {
+	rows, err := stmt.NamedQueryContext(ctx, structOrMapOrSlice)
+	if err != nil {
+		return &Row{err: err}
+	}
+	return &Row{rows: *rows}
+}
+
 // ScanStruct copies the columns in the current row into the given struct.
 func (rows *Rows) ScanStruct(ptrValue interface{}) error {
 	refType := dbreflect.TypeOf(ptrValue)
