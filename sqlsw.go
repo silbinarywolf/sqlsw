@@ -30,6 +30,10 @@ type dbData struct {
 type Rows struct {
 	rows
 	dbData
+
+	// scanStruct cached values
+	columns []string
+	values  []interface{}
 }
 
 // rows exists to add another layer of indirection so a user can't change
@@ -73,12 +77,16 @@ type rowValues struct {
 	values []interface{}
 }
 
+// ScanStruct copies the columns in the current row into the given struct.
 func (rows *Rows) ScanStruct(ptrValue interface{}) error {
 	refType := dbreflect.TypeOf(ptrValue)
 	if refType.Kind() != reflect.Ptr {
 		return errors.New("ScanStruct: must pass a pointer, not a value")
 	}
 	refType = refType.Elem()
+	if refType.Kind() != reflect.Struct {
+		return errors.New("ScanStruct: must pass a pointer to struct, not " + refType.Kind().String())
+	}
 
 	columnNames, err := rows.rows.Columns()
 	if err != nil {

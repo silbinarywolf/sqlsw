@@ -2,7 +2,7 @@
 package dbreflect
 
 import (
-	"fmt"
+	"bytes"
 	"reflect"
 	"sync"
 )
@@ -72,18 +72,24 @@ type reflectProcessErrorList struct {
 }
 
 func (err *reflectProcessErrorList) Error() string {
-	// todo(jae): 2022-10-15
-	// print each on a line
-	return fmt.Sprintf("%+v", err.errors)
+	if len(err.errors) == 0 {
+		return "missing error information"
+	}
+	if len(err.errors) == 1 {
+		return err.errors[0].Error()
+	}
+	var buf bytes.Buffer
+	buf.WriteString("Multiple reflection errors:\n")
+	for _, subErr := range err.errors {
+		buf.WriteString("- ")
+		buf.WriteString(subErr.Error())
+		buf.WriteRune('\n')
+	}
+	return buf.String()
 }
 
 func (m *ReflectModule) GetStruct(typeEl Type) (*Struct, error) {
-	structInfo, err := getStruct(typeEl)
-	if err != nil {
-		return nil, err
-	}
-	return &structInfo, nil
-	/* key := typeEl
+	key := typeEl
 	unassertedStructInfo, ok := m.cachedStructs.Load(key)
 	if ok {
 		return unassertedStructInfo.(*Struct), nil
@@ -93,7 +99,7 @@ func (m *ReflectModule) GetStruct(typeEl Type) (*Struct, error) {
 		return nil, err
 	}
 	m.cachedStructs.Store(key, &structInfo)
-	return &structInfo, nil */
+	return &structInfo, nil
 }
 
 func getStruct(typeEl Type) (Struct, error) {
@@ -137,6 +143,10 @@ func (p *ReflectProcessor) processFields(typeEl Type) {
 		// if !structField.CanSet() {
 		// 	continue
 		// }
+
+		// todo(jae): 2022-10-16
+		// sqlx does not skip if there is no tag, we need to add compatibility
+		// for that here in the compat layer.
 		fullTagInfo, ok := structFieldType.Tag().Lookup("db")
 		if !ok {
 			// skip if there is no tag on field

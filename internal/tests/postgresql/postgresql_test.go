@@ -5,7 +5,7 @@ import (
 	"os"
 	"testing"
 
-	_ "github.com/jackc/pgx/v4/stdlib"
+	_ "github.com/lib/pq"
 	"github.com/silbinarywolf/sqlsw"
 	"github.com/silbinarywolf/sqlsw/internal/tests/testsuite"
 )
@@ -20,7 +20,7 @@ func testMain(m *testing.M) error {
 		dataSourceName = "postgres://postgres:password@localhost:5432/postgres?sslmode=disable"
 	}
 	var err error
-	db, err = sqlsw.Open("pgx", dataSourceName)
+	db, err = sqlsw.Open("postgres", dataSourceName)
 	if err != nil {
 		return err
 	}
