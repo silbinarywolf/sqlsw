@@ -52,24 +52,3 @@ func NamedQueryContextWithScanStruct(t testOrBench, db *sqlsw.DB) {
 		t.Fatal("ID should not be zero")
 	}
 }
-
-func QueryContextWithScan(t testOrBench, db *sqlsw.DB) {
-	queryRecord := selectQueryStruct{}
-	queryRecord.ID = 1
-	query := `select "ID" from "Operation" where "ID" = $1`
-	rows, err := db.QueryContext(context.Background(), query, queryRecord.ID)
-	if err != nil {
-		t.Fatalf("query failed: %s, error: %s", query, err)
-	}
-	defer rows.Close()
-	if !rows.Next() {
-		t.Fatal("expected a result")
-	}
-	var record selectQueryStruct
-	if err := rows.Scan(&record.ID); err != nil {
-		t.Fatal(err)
-	}
-	if record.ID == 0 {
-		t.Fatal("ID should not be zero")
-	}
-}

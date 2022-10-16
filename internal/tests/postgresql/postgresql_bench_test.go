@@ -33,13 +33,3 @@ func BenchmarkNamedQueryContextWithScanStruct(b *testing.B) {
 		testsuite.NamedQueryContextWithScanStruct(b, db)
 	}
 }
-
-// BenchmarkQueryContextWithScan-12    	    1051	   1105692 ns/op	     656 B/op	      17 allocs/op
-// BenchmarkQueryContextWithScan-12    	    1053	   1086366 ns/op	     656 B/op	      17 allocs/op
-// BenchmarkQueryContextWithScan-12    	    1041	   1165816 ns/op	     656 B/op	      17 allocs/op
-// BenchmarkQueryContextWithScan-12    	    1002	   1159123 ns/op	     656 B/op	      17 allocs/op
-func BenchmarkQueryContextWithScan(b *testing.B) {
-	for i := 0; i < b.N; i++ {
-		testsuite.QueryContextWithScan(b, db)
-	}
-}

@@ -129,7 +129,11 @@ func Parse(query string, options Options) (ParseResult, error) {
 				}
 			}
 			if !foundMatch {
-				return ParseResult{}, errors.New(`missing matching ` + string(r) + " character between `" + query[startPos:] + "`")
+				if r == '`' {
+					return ParseResult{}, errors.New(`missing matching ` + string(r) + " character between \"" + query[startPos:] + "\"")
+				} else {
+					return ParseResult{}, errors.New(`missing matching ` + string(r) + " character between `" + query[startPos:] + "`")
+				}
 			}
 			queryReplace = appendString(queryReplace, query[startPos:pos])
 		default:

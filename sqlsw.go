@@ -13,7 +13,7 @@ import (
 )
 
 type DB struct {
-	*sql.DB
+	db sql.DB
 	dbData
 }
 
@@ -31,6 +31,12 @@ type Rows struct {
 	dbData
 }
 
+// Tx is an in-progress database transaction.
+type Tx struct {
+	*sql.Tx
+	dbData
+}
+
 func Open(driverName, dataSourceName string) (*DB, error) {
 	dbDriver, err := sql.Open(driverName, dataSourceName)
 	if err != nil {
@@ -41,18 +47,18 @@ func Open(driverName, dataSourceName string) (*DB, error) {
 		return nil, errors.New("unable to get bind type for driver: " + driverName + "\nUse RegisterBindType to define how your database handles bound parameters.")
 	}
 	db := &DB{}
-	db.DB = dbDriver
+	db.db = *dbDriver
 	db.bindType = bindType
 	db.reflector = &dbreflect.ReflectModule{}
 	return db, nil
 }
 
-func (db *DB) NamedQueryContext(ctx context.Context, query string, args interface{}) (*Rows, error) {
-	query, argList, err := transformNamedQueryAndParams(db.reflector, db.bindType, query, args)
+func (db *DB) NamedQueryContext(ctx context.Context, query string, structOrMapOrSlice interface{}) (*Rows, error) {
+	query, argList, err := transformNamedQueryAndParams(db.reflector, db.bindType, query, structOrMapOrSlice)
 	if err != nil {
 		return nil, err
 	}
-	sqlRows, err := db.DB.QueryContext(ctx, query, argList...)
+	sqlRows, err := db.db.QueryContext(ctx, query, argList...)
 	if err != nil {
 		return nil, err
 	}
@@ -60,6 +66,35 @@ func (db *DB) NamedQueryContext(ctx context.Context, query string, args interfac
 	r.Rows = sqlRows
 	r.dbData = db.dbData
 	return r, nil
+}
+
+func (tx *Tx) NamedQueryContext(ctx context.Context, query string, structOrMapOrSlice interface{}) (*Rows, error) {
+	query, argList, err := transformNamedQueryAndParams(tx.reflector, tx.bindType, query, structOrMapOrSlice)
+	if err != nil {
+		return nil, err
+	}
+	sqlRows, err := tx.QueryContext(ctx, query, argList...)
+	if err != nil {
+		return nil, err
+	}
+	r := &Rows{}
+	r.Rows = sqlRows
+	r.dbData = tx.dbData
+	return r, nil
+}
+
+type NamedQuery interface {
+	NamedQueryContext(ctx context.Context, query string, structOrMapOrSlice interface{}) (*Rows, error)
+}
+
+func NamedQueryContext(ctx context.Context, dbOrTx NamedQuery, query string, structOrMapOrSlice interface{}) (*Rows, error) {
+	switch dbOrTx.(type) {
+	case *DB:
+		return dbOrTx.NamedQueryContext(ctx, query, structOrMapOrSlice)
+	case *Tx:
+		return dbOrTx.NamedQueryContext(ctx, query, structOrMapOrSlice)
+	}
+	return nil, errors.New("unable to execute NamedQueryContext, must be database or transaction")
 }
 
 // ScanStruct copies the columns in the current row into the given struct.
@@ -111,8 +146,7 @@ func (rows *Rows) ScanStruct(ptrValue interface{}) error {
 	return rows.Err()
 }
 
-type unexpectedNamedParameterError struct {
-}
+type unexpectedNamedParameterError struct{}
 
 func (err *unexpectedNamedParameterError) Error() string {
 	return `unexpected named parameter, expected map, array, slice, struct or pointer to struct`
@@ -178,7 +212,7 @@ func transformNamedQueryAndParams(reflector *dbreflect.ReflectModule, bindType b
 	switch k {
 	case reflect.Map:
 		if mapKeyKind := t.Key().Kind(); mapKeyKind != reflect.String {
-			return "", nil, errors.New(`unsupported map key type "` + mapKeyKind.String() + `", must be "string", ie. map[string]interface{}`)
+			return "", nil, errors.New(`unsupported map key type "` + mapKeyKind.String() + `", must be "string", ie. map[string]interface{} or map[string]string`)
 		}
 		// note(jae): 2022-10-15
 		// This won't be an exact fit for arguments and will over-allocate
