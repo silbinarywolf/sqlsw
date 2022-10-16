@@ -75,10 +75,6 @@ func (db *DB) NamedQueryContext(ctx context.Context, query string, args interfac
 	return r, nil
 }
 
-type rowValues struct {
-	values []interface{}
-}
-
 // ScanStruct copies the columns in the current row into the given struct.
 func (rows *Rows) ScanStruct(ptrValue interface{}) error {
 	refType := dbreflect.TypeOf(ptrValue)
@@ -89,7 +85,6 @@ func (rows *Rows) ScanStruct(ptrValue interface{}) error {
 	if refType.Kind() != reflect.Struct {
 		return errors.New("ScanStruct: must pass a pointer to struct, not " + refType.Kind().String())
 	}
-
 	columnNames, err := rows.rows.Columns()
 	if err != nil {
 		return err
@@ -98,7 +93,7 @@ func (rows *Rows) ScanStruct(ptrValue interface{}) error {
 	var (
 		values []interface{}
 		// temporary array used on stack
-		valuesUnderlying [8]interface{}
+		valuesUnderlying [16]interface{}
 		// skippedFieldValue is used to hold skipped values
 		skippedFieldValue interface{}
 	)
@@ -146,12 +141,17 @@ func (err *missingValueError) Error() string {
 
 func parseNamedQuery(query string, options sqlparser.Options) (sqlparser.ParseResult, error) {
 	// not-cached
+	//
+	//
 	return sqlparser.Parse(query, options)
 
 	// cached
 	// - the savings aren't high enough to justify this
 	// - this logic is also incorrect, doesn't use bind type in key
 	// - requires re-adding "var cachedNamedQuery sync.Map"
+	//
+	// BenchmarkNamedQueryContextWithScanStruct-12    	    1014	   1169991 ns/op	     728 B/op	      21 allocs/op
+	//
 	/* unassertedParsedResult, ok := cachedNamedQuery.Load(query)
 	if ok {
 		return unassertedParsedResult.(sqlparser.ParseResult), nil
@@ -171,7 +171,6 @@ func transformNamedQueryAndParams(reflector *dbreflect.ReflectModule, bindType b
 	if err != nil {
 		return "", nil, err
 	}
-	transformedQuery := parseResult.Query()
 	parameterNames := parseResult.Parameters()
 
 	t := reflect.TypeOf(args)
@@ -314,5 +313,5 @@ func transformNamedQueryAndParams(reflector *dbreflect.ReflectModule, bindType b
 			argList = append(argList, field.Interface(reflectArgs))
 		}
 	}
-	return transformedQuery, argList, nil
+	return parseResult.Query(), argList, nil
 }

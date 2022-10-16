@@ -29,9 +29,6 @@ type selectQueryStruct struct {
 }
 
 func NamedQueryContextWithScanStruct(t testOrBench, db *sqlsw.DB) {
-	type selectQueryStruct struct {
-		ID int64 `db:"ID"`
-	}
 	queryRecord := selectQueryStruct{}
 	queryRecord.ID = 1
 	query := `select "ID" from "Operation" where "ID" = :ID`
@@ -53,9 +50,6 @@ func NamedQueryContextWithScanStruct(t testOrBench, db *sqlsw.DB) {
 }
 
 func QueryContextWithScan(t testOrBench, db *sqlsw.DB) {
-	type selectQueryStruct struct {
-		ID int64 `db:"ID"`
-	}
 	queryRecord := selectQueryStruct{}
 	queryRecord.ID = 1
 	query := `select "ID" from "Operation" where "ID" = $1`

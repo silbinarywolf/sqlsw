@@ -33,20 +33,16 @@ func (pr *ParseResult) Parameters() []string {
 	return pr.parameters
 }
 
-func (ps *ParseResult) appendParameter(parameter string) {
-	ps.parameters = append(ps.parameters, parameter)
-}
-
 // Parse will take a query string and return the query but replace the interpolated
 // names with the bind type ($1, ?, @1, etc) and a list of parameters
 func Parse(query string, options Options) (ParseResult, error) {
 	var (
 		stackBytes      [256]byte
-		stackParameters [8]string
+		stackParameters [16]string
 	)
 	// Setup query replacement buffer
 	var queryReplace []byte
-	if len(query) > len(stackBytes) {
+	if len(query) >= len(stackBytes) {
 		queryReplace = make([]byte, 0, len(query))
 	} else {
 		// Use bytes on the stack while building the new query string
@@ -57,9 +53,7 @@ func Parse(query string, options Options) (ParseResult, error) {
 	// ie. $0
 	currentParamIndex := 1
 	bindType := options.BindType
-
-	var pr ParseResult
-	pr.parameters = stackParameters[:0]
+	parameters := stackParameters[:0]
 	for pos := 0; pos < len(query); {
 		r, size := utf8.DecodeRuneInString(query[pos:])
 		switch r {
@@ -88,14 +82,16 @@ func Parse(query string, options Options) (ParseResult, error) {
 				queryReplace = appendRune(queryReplace, r)
 				break
 			}
-			name := query[startPos:pos]
-			pr.appendParameter(name)
+			// parameterName will equal a value like "GivenID"
+			// from the query string `select "ID" from "MyTable" where "ID" = :GivenID
+			parameterName := query[startPos:pos]
+			parameters = append(parameters, parameterName)
 			switch bindType {
 			case bindtype.Question:
 				queryReplace = append(queryReplace, '?')
 			case bindtype.Named:
 				queryReplace = append(queryReplace, ':')
-				queryReplace = appendString(queryReplace, name)
+				queryReplace = appendString(queryReplace, parameterName)
 			case bindtype.Dollar:
 				queryReplace = append(queryReplace, '$')
 				queryReplace = appendString(queryReplace, strconv.Itoa(currentParamIndex))
@@ -135,6 +131,12 @@ func Parse(query string, options Options) (ParseResult, error) {
 			queryReplace = appendRune(queryReplace, r)
 		}
 	}
+	var pr ParseResult
+	pr.parameters = make([]string, len(parameters))
+	for i := range pr.parameters {
+		pr.parameters[i] = parameters[i]
+	}
+	//copy(pr.parameters, parameters)
 	pr.query = string(queryReplace)
 	return pr, nil
 }

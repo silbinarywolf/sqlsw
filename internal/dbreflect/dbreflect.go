@@ -59,15 +59,6 @@ func (field *StructField) Addr(structAsReflectValue Value) interface{} {
 	return v.Addr().Interface()
 }
 
-// SetValue will set the value on the struct using the value
-/* func (field *StructField) SetValue(structAsReflectValue Value, value interface{}) {
-	v := structAsReflectValue.value
-	for _, i := range field.indexes {
-		v = reflect.Indirect(v).Field(i)
-	}
-	v.Set(reflect.ValueOf(value))
-} */
-
 type reflectProcessErrorList struct {
 	errors []error
 }

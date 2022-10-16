@@ -12,7 +12,7 @@ const (
 	ignoreCorrectnessInBenchmark = false
 )
 
-func BenchmarkParseSelect(b *testing.B) {
+func BenchmarkParse(b *testing.B) {
 	i := 1
 	testCase := goldenTests[i]
 	testCaseNumber := i + 1
@@ -27,8 +27,8 @@ func BenchmarkParseSelect(b *testing.B) {
 			b.Fatal(err)
 		}
 		if !ignoreCorrectnessInBenchmark {
-			if testCase.ExpectedQuery != r.Query() {
-				b.Errorf("test case %d/%d: Query expected to be:\n`%s`\nnot\n`%s`", testCaseNumber, len(goldenTests), testCase.ExpectedQuery, r.Query())
+			if testCase.ExpectedDollarQuery != r.Query() {
+				b.Errorf("test case %d/%d: Query expected to be:\n`%s`\nnot\n`%s`", testCaseNumber, len(goldenTests), testCase.ExpectedDollarQuery, r.Query())
 			}
 			if len(testCase.ExpectedParameters) != len(r.Parameters()) {
 				b.Errorf("test case %d/%d: Parameters expected to be:\n`%+v`\nnot\n`%+v`", testCaseNumber, len(goldenTests), testCase.ExpectedParameters, r.Parameters())
