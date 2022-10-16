@@ -5,11 +5,6 @@ import (
 	"testing"
 )
 
-var v interface{} = map[string]interface{}{
-	"ID":   1,
-	"Name": "Title",
-}
-
 // Go 1.19
 // - 1000000000	         0.2484 ns/op	       0 B/op	       0 allocs/op
 func BenchmarkTypeAssertConvertToMapStringInterface(b *testing.B) {

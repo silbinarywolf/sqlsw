@@ -48,6 +48,12 @@ func (db *DB) DB() *sql.DB { return db.db }
 type dataAndCaching struct {
 	// bindType is whether parameters are bound with ?, $, @, :Named, etc
 	bindType bindtype.Kind
+	// caching holds any structs that cache data needed for Scan
+	caching
+}
+
+// caching is extra information stored on db and passed around statements and transactions
+type caching struct {
 	// reflector handles reflection logic and caching
 	reflector *dbreflect.ReflectModule
 }
@@ -56,7 +62,8 @@ type dataAndCaching struct {
 // of the result set. Use Next to advance from row to row.
 type Rows struct {
 	rows *sql.Rows
-	dataAndCaching
+	// caching holds any structs that cache data needed for Scan
+	caching
 }
 
 // Close closes the Rows, preventing further enumeration. If Next is called
@@ -73,10 +80,20 @@ func (rows *Rows) Err() error {
 	return rows.rows.Err()
 }
 
-func newRows(rows *sql.Rows, data dataAndCaching) *Rows {
+// Next prepares the next result row for reading with the Scan method. It
+// returns true on success, or false if there is no next result row or an error
+// happened while preparing it. Err should be consulted to distinguish between
+// the two cases.
+//
+// Every call to Scan, even the first one, must be preceded by a call to Next.
+func (rows *Rows) Next() bool {
+	return rows.rows.Next()
+}
+
+func newRows(rows *sql.Rows, cachingData caching) *Rows {
 	r := &Rows{}
 	r.rows = rows
-	r.dataAndCaching = data
+	r.caching = cachingData
 	return r
 }
 
@@ -100,8 +117,21 @@ func (tx *Tx) Rollback() error {
 // A NamedStmt is safe for concurrent use by multiple goroutines.
 type NamedStmt struct {
 	underlying *sql.Stmt
-	dataAndCaching
-	pr sqlparser.ParseResult
+	parameters []string
+	// caching holds any structs that cache data needed for Scan
+	caching
+}
+
+func newNamedStmt(stmt *sql.Stmt, parameters []string) *NamedStmt {
+	s := &NamedStmt{}
+	s.underlying = stmt
+	s.parameters = parameters
+	return s
+}
+
+// Close closes the statement.
+func (stmt *NamedStmt) Close() error {
+	return stmt.underlying.Close()
 }
 
 // NamedPrepareContext creates a prepared statement for later queries or executions.
@@ -112,15 +142,26 @@ func (db *DB) NamedPrepareContext(ctx context.Context, query string) (*NamedStmt
 	if err != nil {
 		return nil, err
 	}
-	stmtUnderlying, err := db.db.PrepareContext(ctx, query)
+	stmt, err := db.db.PrepareContext(ctx, parseResult.Query())
 	if err != nil {
 		return nil, err
 	}
-	stmt := &NamedStmt{}
-	stmt.underlying = stmtUnderlying
-	stmt.dataAndCaching = db.dataAndCaching
-	stmt.pr = parseResult
-	return stmt, nil
+	return newNamedStmt(stmt, parseResult.Parameters()), nil
+}
+
+// NamedPrepareContext creates a prepared statement for later queries or executions.
+func (tx *Tx) NamedPrepareContext(ctx context.Context, query string) (*NamedStmt, error) {
+	parseResult, err := parseNamedQuery(query, sqlparser.Options{
+		BindType: tx.bindType,
+	})
+	if err != nil {
+		return nil, err
+	}
+	stmt, err := tx.underlying.PrepareContext(ctx, parseResult.Query())
+	if err != nil {
+		return nil, err
+	}
+	return newNamedStmt(stmt, parseResult.Parameters()), nil
 }
 
 // NamedQueryContext executes a query that returns rows, typically a SELECT.
@@ -133,7 +174,7 @@ func (db *DB) NamedQueryContext(ctx context.Context, query string, structOrMapOr
 	if err != nil {
 		return nil, err
 	}
-	return newRows(rows, db.dataAndCaching), nil
+	return newRows(rows, db.caching), nil
 }
 
 // NamedQueryContext executes a query that returns rows, typically a SELECT.
@@ -146,12 +187,12 @@ func (tx *Tx) NamedQueryContext(ctx context.Context, query string, structOrMapOr
 	if err != nil {
 		return nil, err
 	}
-	return newRows(rows, tx.dataAndCaching), nil
+	return newRows(rows, tx.caching), nil
 }
 
 // NamedQueryContext executes a query that returns rows, typically a SELECT.
-func (stmt *NamedStmt) NamedQueryContext(ctx context.Context, query string, structOrMapOrSlice interface{}) (*Rows, error) {
-	query, argList, err := transformNamedQueryAndParams(stmt.reflector, stmt.bindType, query, structOrMapOrSlice)
+func (stmt *NamedStmt) NamedQueryContext(ctx context.Context, structOrMapOrSlice interface{}) (*Rows, error) {
+	argList, err := getArgumentListFromParameters(stmt.reflector, stmt.parameters, structOrMapOrSlice)
 	if err != nil {
 		return nil, err
 	}
@@ -159,7 +200,7 @@ func (stmt *NamedStmt) NamedQueryContext(ctx context.Context, query string, stru
 	if err != nil {
 		return nil, err
 	}
-	return newRows(rows, stmt.dataAndCaching), nil
+	return newRows(rows, stmt.caching), nil
 }
 
 // namedQuery is an interface for calling NamedQueryContext with a database or transaction
@@ -266,14 +307,7 @@ func parseNamedQuery(query string, options sqlparser.Options) (sqlparser.ParseRe
 	return parseResult, nil */
 }
 
-func transformNamedQueryAndParams(reflector *dbreflect.ReflectModule, bindType bindtype.Kind, query string, mapOrStructOrSlice interface{}) (string, []interface{}, error) {
-	parseResult, err := parseNamedQuery(query, sqlparser.Options{
-		BindType: bindType,
-	})
-	if err != nil {
-		return "", nil, err
-	}
-	parameterNames := parseResult.Parameters()
+func getArgumentListFromParameters(reflector *dbreflect.ReflectModule, parameterNames []string, mapOrStructOrSlice interface{}) ([]interface{}, error) {
 	var argList []interface{}
 	switch mapOrStructOrSlice := mapOrStructOrSlice.(type) {
 	case map[string]interface{}:
@@ -282,7 +316,7 @@ func transformNamedQueryAndParams(reflector *dbreflect.ReflectModule, bindType b
 		for _, fieldName := range parameterNames {
 			v, ok := mapOrStructOrSlice[fieldName]
 			if !ok {
-				return "", nil, &missingValueError{fieldName: fieldName}
+				return nil, &missingValueError{fieldName: fieldName}
 			}
 			argList = append(argList, v)
 		}
@@ -292,7 +326,7 @@ func transformNamedQueryAndParams(reflector *dbreflect.ReflectModule, bindType b
 		for _, fieldName := range parameterNames {
 			v, ok := mapOrStructOrSlice[fieldName]
 			if !ok {
-				return "", nil, &missingValueError{fieldName: fieldName}
+				return nil, &missingValueError{fieldName: fieldName}
 			}
 			argList = append(argList, v)
 		}
@@ -302,7 +336,7 @@ func transformNamedQueryAndParams(reflector *dbreflect.ReflectModule, bindType b
 		switch k {
 		case reflect.Map:
 			if mapKeyKind := t.Key().Kind(); mapKeyKind != reflect.String {
-				return "", nil, errors.New(`unsupported map key type "` + mapKeyKind.String() + `", must be "string", ie. map[string]interface{} or map[string]string`)
+				return nil, errors.New(`unsupported map key type "` + mapKeyKind.String() + `", must be "string", ie. map[string]interface{} or map[string]string`)
 			}
 			// note(jae): 2022-10-15
 			// Slow-path that SQLx uses on map types.
@@ -315,13 +349,13 @@ func transformNamedQueryAndParams(reflector *dbreflect.ReflectModule, bindType b
 			// - 44560135	         26.44 ns/op	       0 B/op	       0 allocs/op
 			mtype := reflect.TypeOf(map[string]interface{}{})
 			if !reflect.TypeOf(mapOrStructOrSlice).ConvertibleTo(mtype) {
-				return "", nil, errors.New(`invalid map given, unable to convert to map[string]interface{}`)
+				return nil, errors.New(`invalid map given, unable to convert to map[string]interface{}`)
 			}
 			argMap := reflect.ValueOf(mapOrStructOrSlice).Convert(mtype).Interface().(map[string]interface{})
 			for _, fieldName := range parameterNames {
 				v, ok := argMap[fieldName]
 				if !ok {
-					return "", nil, &missingValueError{fieldName: fieldName}
+					return nil, &missingValueError{fieldName: fieldName}
 				}
 				argList = append(argList, v)
 			}
@@ -329,7 +363,7 @@ func transformNamedQueryAndParams(reflector *dbreflect.ReflectModule, bindType b
 			arrayValue := reflect.ValueOf(mapOrStructOrSlice)
 			arrayLen := arrayValue.Len()
 			if arrayLen == 0 {
-				return "", nil, fmt.Errorf("length of array is 0: %#v", mapOrStructOrSlice)
+				return nil, fmt.Errorf("length of array is 0: %#v", mapOrStructOrSlice)
 			}
 			// note(jae): 2022-10-15
 			// This won't be an exact fit for arguments and will over-allocate
@@ -341,7 +375,7 @@ func transformNamedQueryAndParams(reflector *dbreflect.ReflectModule, bindType b
 					for _, fieldName := range parameterNames {
 						v, ok := args[fieldName]
 						if !ok {
-							return "", nil, &missingValueError{fieldName: fieldName}
+							return nil, &missingValueError{fieldName: fieldName}
 						}
 						argList = append(argList, v)
 					}
@@ -349,7 +383,7 @@ func transformNamedQueryAndParams(reflector *dbreflect.ReflectModule, bindType b
 					for _, fieldName := range parameterNames {
 						v, ok := args[fieldName]
 						if !ok {
-							return "", nil, &missingValueError{fieldName: fieldName}
+							return nil, &missingValueError{fieldName: fieldName}
 						}
 						argList = append(argList, v)
 					}
@@ -369,7 +403,7 @@ func transformNamedQueryAndParams(reflector *dbreflect.ReflectModule, bindType b
 						for _, fieldName := range parameterNames {
 							v, ok := argMap[fieldName]
 							if !ok {
-								return "", nil, &missingValueError{fieldName: fieldName}
+								return nil, &missingValueError{fieldName: fieldName}
 							}
 							argList = append(argList, v)
 						}
@@ -380,7 +414,7 @@ func transformNamedQueryAndParams(reflector *dbreflect.ReflectModule, bindType b
 			}
 		default:
 			if k != reflect.Ptr && k != reflect.Struct {
-				return "", nil, &unexpectedNamedParameterError{}
+				return nil, &unexpectedNamedParameterError{}
 			}
 			if k == reflect.Ptr {
 				t = t.Elem()
@@ -389,15 +423,15 @@ func transformNamedQueryAndParams(reflector *dbreflect.ReflectModule, bindType b
 					//
 					// - MyStruct, *MyStruct = allowed
 					// - **MyStruct, ***MyStruct = not allowed
-					return "", nil, &unexpectedNamedParameterError{}
+					return nil, &unexpectedNamedParameterError{}
 				}
 			}
 			if t.Kind() != reflect.Struct {
-				return "", nil, &unexpectedNamedParameterError{}
+				return nil, &unexpectedNamedParameterError{}
 			}
 			structData, err := reflector.GetStruct(dbreflect.TypeOf(mapOrStructOrSlice))
 			if err != nil {
-				return "", nil, err
+				return nil, err
 			}
 			reflectArgs := dbreflect.ValueOf(mapOrStructOrSlice)
 			// note(jae): 2022-10-15
@@ -407,13 +441,27 @@ func transformNamedQueryAndParams(reflector *dbreflect.ReflectModule, bindType b
 			for _, parameterName := range parameterNames {
 				field, ok := structData.GetFieldByName(parameterName)
 				if !ok {
-					return "", nil, errors.New(parameterName + " was not found on struct")
+					return nil, errors.New(parameterName + " was not found on struct")
 				}
 				argList = append(argList, field.Interface(reflectArgs))
 			}
 		}
 	}
-	return parseResult.Query(), argList, nil
+	return argList, nil
+}
+
+func transformNamedQueryAndParams(reflector *dbreflect.ReflectModule, bindType bindtype.Kind, query string, mapOrStructOrSlice interface{}) (string, []interface{}, error) {
+	parseResult, err := parseNamedQuery(query, sqlparser.Options{
+		BindType: bindType,
+	})
+	if err != nil {
+		return "", nil, err
+	}
+	argList, err := getArgumentListFromParameters(reflector, parseResult.Parameters(), mapOrStructOrSlice)
+	if err != nil {
+		return "", nil, err
+	}
+	return parseResult.Query(), argList, err
 }
 
 // testOrBench is an interface for testing.T or testing.B
