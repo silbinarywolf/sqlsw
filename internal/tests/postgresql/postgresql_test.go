@@ -15,12 +15,8 @@ var (
 )
 
 func testMain(m *testing.M) error {
-	dataSourceName := testsuite.GetDefaultDataSourceName()
-	if dataSourceName == "" {
-		dataSourceName = "postgres://postgres:password@localhost:5432/postgres?sslmode=disable"
-	}
 	var err error
-	db, err = sqlsw.Open("postgres", dataSourceName)
+	db, err = newDB()
 	if err != nil {
 		return err
 	}
@@ -32,6 +28,19 @@ func TestMain(m *testing.M) {
 		panic(err)
 	}
 	os.Exit(m.Run())
+}
+
+func newDB() (*sqlsw.DB, error) {
+	dataSourceName := testsuite.GetDefaultDataSourceName()
+	if dataSourceName == "" {
+		dataSourceName = "postgres://postgres:password@localhost:5432/postgres?sslmode=disable"
+	}
+	var err error
+	db, err = sqlsw.Open("postgres", dataSourceName)
+	if err != nil {
+		return nil, err
+	}
+	return db, nil
 }
 
 func TestRunAllCommonTests(t *testing.T) {

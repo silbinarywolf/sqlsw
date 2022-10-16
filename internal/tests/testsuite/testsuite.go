@@ -18,6 +18,10 @@ func GetDefaultDataSourceName() string {
 	return os.Getenv("DATABASE_URL")
 }
 
+func ResetCache(t testOrBench, db *sqlsw.DB) {
+	sqlsw.TestOnlyResetCache(t, db)
+}
+
 func TestRunAll(t *testing.T, db *sqlsw.DB) {
 	t.Run("NamedQueryContext with ScanStruct", func(t *testing.T) {
 		NamedQueryContextWithScanStruct(t, db)

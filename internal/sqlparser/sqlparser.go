@@ -36,17 +36,23 @@ func (pr *ParseResult) Parameters() []string {
 // Parse will take a query string and return the query but replace the interpolated
 // names with the bind type ($1, ?, @1, etc) and a list of parameters
 func Parse(query string, options Options) (ParseResult, error) {
+	// Store some data temporarily on the stack to reduce allocation
+	// of bytes + overall count
+	//
+	// These get copied onto the heap later
 	var (
-		stackBytes      [256]byte
+		stackQuery      [256]byte
 		stackParameters [16]string
 	)
 	// Setup query replacement buffer
 	var queryReplace []byte
-	if len(query) >= len(stackBytes) {
+	if len(query) >= len(stackQuery) {
+		// If we're likely going to go over stack bytes
+		// just allocate once here
 		queryReplace = make([]byte, 0, len(query))
 	} else {
 		// Use bytes on the stack while building the new query string
-		queryReplace = stackBytes[:0]
+		queryReplace = stackQuery[:0]
 	}
 	// currentParamIndex is used for bind types that require positional
 	// knowledge such as $ and @.

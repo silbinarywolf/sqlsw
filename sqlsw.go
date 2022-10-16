@@ -13,15 +13,8 @@ import (
 )
 
 type DB struct {
-	dbWrapper
-	dbData
-}
-
-// dbWrapper exists to add another layer of indirection so a user can't change
-// the pointer to DB it's holding
-type dbWrapper struct {
-	// DB handle is a database handle from database/sql
 	*sql.DB
+	dbData
 }
 
 type dbData struct {
@@ -34,14 +27,8 @@ type dbData struct {
 // Rows is the result of a query. Its cursor starts before the first row
 // of the result set. Use Next to advance from row to row.
 type Rows struct {
-	rows
-	dbData
-}
-
-// rows exists to add another layer of indirection so a user can't change
-// the pointer to Rows it's holding
-type rows struct {
 	*sql.Rows
+	dbData
 }
 
 func Open(driverName, dataSourceName string) (*DB, error) {
@@ -54,7 +41,7 @@ func Open(driverName, dataSourceName string) (*DB, error) {
 		return nil, errors.New("unable to get bind type for driver: " + driverName + "\nUse RegisterBindType to define how your database handles bound parameters.")
 	}
 	db := &DB{}
-	db.dbWrapper.DB = dbDriver
+	db.DB = dbDriver
 	db.bindType = bindType
 	db.reflector = &dbreflect.ReflectModule{}
 	return db, nil
@@ -65,12 +52,12 @@ func (db *DB) NamedQueryContext(ctx context.Context, query string, args interfac
 	if err != nil {
 		return nil, err
 	}
-	sqlRows, err := db.dbWrapper.QueryContext(ctx, query, argList...)
+	sqlRows, err := db.DB.QueryContext(ctx, query, argList...)
 	if err != nil {
 		return nil, err
 	}
 	r := &Rows{}
-	r.rows.Rows = sqlRows
+	r.Rows = sqlRows
 	r.dbData = db.dbData
 	return r, nil
 }
@@ -85,7 +72,7 @@ func (rows *Rows) ScanStruct(ptrValue interface{}) error {
 	if refType.Kind() != reflect.Struct {
 		return errors.New("ScanStruct: must pass a pointer to struct, not " + refType.Kind().String())
 	}
-	columnNames, err := rows.rows.Columns()
+	columnNames, err := rows.Columns()
 	if err != nil {
 		return err
 	}
@@ -117,7 +104,7 @@ func (rows *Rows) ScanStruct(ptrValue interface{}) error {
 			values[i] = field.Addr(reflectArgs)
 		}
 	}
-	err = rows.rows.Scan(values...)
+	err = rows.Scan(values...)
 	if err != nil {
 		return err
 	}
@@ -146,7 +133,7 @@ func parseNamedQuery(query string, options sqlparser.Options) (sqlparser.ParseRe
 	return sqlparser.Parse(query, options)
 
 	// cached
-	// - the savings aren't high enough to justify this
+	// - IMO, the savings aren't high enough to justify this
 	// - this logic is also incorrect, doesn't use bind type in key
 	// - requires re-adding "var cachedNamedQuery sync.Map"
 	//
@@ -162,6 +149,18 @@ func parseNamedQuery(query string, options sqlparser.Options) (sqlparser.ParseRe
 	}
 	cachedNamedQuery.Store(query, parseResult)
 	return parseResult, nil */
+}
+
+type testOrBench interface {
+	Fatal(args ...interface{})
+	Fatalf(format string, args ...interface{})
+}
+
+// TestOnlyResetCache will reset all caching logic on the DB struct
+//
+// This should be used for testing and benchmarking purposes only.
+func TestOnlyResetCache(t testOrBench, db *DB) {
+	db.reflector = &dbreflect.ReflectModule{}
 }
 
 func transformNamedQueryAndParams(reflector *dbreflect.ReflectModule, bindType bindtype.Kind, query string, args interface{}) (string, []interface{}, error) {
