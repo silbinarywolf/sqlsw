@@ -2,6 +2,8 @@ package sqlsw
 
 import (
 	"database/sql"
+
+	"github.com/silbinarywolf/sqlsw/internal/bindtype"
 )
 
 // --------
@@ -16,6 +18,13 @@ import (
 func SQLX_CompatNewDB(db *sql.DB, driverName string) (*DB, error) {
 	dbWrapper, err := newDB(db, driverName)
 	return dbWrapper, err
+}
+
+// SQLX_GetBindType exists to support NewDb in the sqlx backwards compatibility driver.
+//
+// Deprecated: This may be changed or removed in the future. Do not use.
+func SQLX_GetBindType(db *DB) bindtype.Kind {
+	return db.bindType
 }
 
 // SQLX_DB returns the underlying "database/sql" handle

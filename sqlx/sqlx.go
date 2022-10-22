@@ -7,6 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"strconv"
+	"strings"
 
 	"github.com/silbinarywolf/sqlsw"
 )
@@ -29,6 +31,7 @@ func NewDb(db *sql.DB, driverName string) *DB {
 	dbR := &DB{}
 	dbR.driverName = driverName
 	dbR.db = *dbSw
+	dbR.bindType = int(sqlsw.SQLX_GetBindType(&dbR.db))
 	return dbR
 }
 
@@ -40,6 +43,7 @@ func Open(driverName, dataSourceName string) (*DB, error) {
 	db := &DB{}
 	db.driverName = driverName
 	db.db = *dbDriver
+	db.bindType = int(sqlsw.SQLX_GetBindType(&db.db))
 	return db, err
 }
 
@@ -121,8 +125,7 @@ func (db *DB) Unsafe() *DB {
 
 // Rebind a query within a transaction's bindvar type.
 func (db *DB) Rebind(query string) string {
-	panic("TODO(jae): 2022-10-22: Implement Rebind")
-	//return Rebind(BindType(tx.driverName), query)
+	return Rebind(db.bindType, query)
 }
 
 // DriverName returns the driverName passed to the Open function for this DB.
@@ -422,6 +425,7 @@ func (stmt *NamedStmt) Close() error {
 type metadataInfo struct {
 	// driverName is the driver being used
 	driverName string
+	bindType   int
 	// unsafe is true when unknown fields are allowed
 	unsafe bool
 	// note(jae): 2022-10-22
@@ -673,12 +677,6 @@ func (tx *Tx) MustExec(query string, args ...interface{}) sql.Result {
 	return sqlResult
 }
 
-// Rebind a query within a transaction's bindvar type.
-func (tx *Tx) Rebind(query string) string {
-	panic("TODO(jae): 2022-10-22: Implement tx.Rebind")
-	//return Rebind(BindType(tx.driverName), query)
-}
-
 // NamedStmtContext returns a version of the prepared statement which runs
 // within a transaction.
 func (tx *Tx) NamedStmtContext(ctx context.Context, stmt *NamedStmt) *NamedStmt {
@@ -759,4 +757,45 @@ func isUnsafe(i interface{}) bool {
 	default:
 		return false
 	}
+}
+
+// Rebind a query within a transaction's bindvar type.
+func (tx *Tx) Rebind(query string) string {
+	return Rebind(tx.bindType, query)
+}
+
+// Rebind a query from the default bindtype (QUESTION) to the target bindtype.
+func Rebind(bindType int, query string) string {
+	switch bindType {
+	case QUESTION, UNKNOWN:
+		return query
+	}
+	// note(jae): 2022-10-22
+	// Borrowed from sqlx directly. We could probably write a parser
+	// that's faster than this implementation later.
+
+	// Add space enough for 10 params before we have to allocate
+	rqb := make([]byte, 0, len(query)+10)
+
+	var i, j int
+
+	for i = strings.Index(query, "?"); i != -1; i = strings.Index(query, "?") {
+		rqb = append(rqb, query[:i]...)
+
+		switch bindType {
+		case DOLLAR:
+			rqb = append(rqb, '$')
+		case NAMED:
+			rqb = append(rqb, ':', 'a', 'r', 'g')
+		case AT:
+			rqb = append(rqb, '@', 'p')
+		}
+
+		j++
+		rqb = strconv.AppendInt(rqb, int64(j), 10)
+
+		query = query[i+1:]
+	}
+
+	return string(append(rqb, query...))
 }
