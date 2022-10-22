@@ -65,6 +65,17 @@ type Ext interface {
 	Execer
 }
 
+// Unsafe returns a version of DB which will silently succeed to scan when
+// columns in the SQL result have no fields in the destination struct.
+// sqlx.Stmt and sqlx.Tx which are created from this DB will inherit its
+// safety behavior.
+func (db *DB) Unsafe() *DB {
+	newDB := new(DB)
+	*newDB = *db
+	newDB.allowUnknownFields = true
+	return newDB
+}
+
 // Rebind a query within a transaction's bindvar type.
 func (db *DB) Rebind(query string) string {
 	panic("TODO(jae): 2022-10-22: Implement Rebind")
@@ -181,16 +192,38 @@ func (db *DB) QueryxContext(ctx context.Context, query string, args ...interface
 	}, err
 }
 
+// BindNamed binds a query using the DB driver's bindvar type.
 func (*DB) BindNamed(query string, structOrMapArg interface{}) (string, []interface{}, error) {
-	panic("TODO(jae): 2022-10-22: Support BindNamed")
+	panic("TODO(jae): 2022-10-22: Implement BindNamed")
 	// return bindNamedMapper(BindType(db.driverName), query, arg, db.Mapper)
+}
+
+// SelectContext using this DB.
+// Any placeholder parameters are replaced with supplied args.
+func (db *DB) SelectContext(ctx context.Context, dest interface{}, query string, args ...interface{}) error {
+	panic("TODO(jae): 2022-10-22: Implement SelectContext")
+	//return SelectContext(ctx, db, dest, query, args...)
+}
+
+// Select using this DB.
+// Any placeholder parameters are replaced with supplied args.
+func (db *DB) Select(dest interface{}, query string, args ...interface{}) error {
+	return db.SelectContext(context.Background(), dest, query, args...)
 }
 
 // GetContext using this DB.
 // Any placeholder parameters are replaced with supplied args.
 // An error is returned if the result set is empty.
 func (db *DB) GetContext(ctx context.Context, dest interface{}, query string, args ...interface{}) error {
-	return GetContext(ctx, db, dest, query, args...)
+	panic("TODO(Jae): 2022-10-22: Support db.GetContext")
+	// return GetContext(ctx, db, dest, query, args...)
+}
+
+// Get using this DB.
+// Any placeholder parameters are replaced with supplied args.
+// An error is returned if the result set is empty.
+func (db *DB) Get(dest interface{}, query string, args ...interface{}) error {
+	return db.GetContext(context.Background(), dest, query, args...)
 }
 
 type NamedStmt struct {
