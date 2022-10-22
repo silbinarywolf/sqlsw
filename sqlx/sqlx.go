@@ -409,6 +409,19 @@ func newStmt(stmt *sql.Stmt, metadata metadatai) *Stmt {
 	}
 }
 
+// SelectContext using the prepared statement.
+// Any placeholder parameters are replaced with supplied args.
+func (stmt *Stmt) SelectContext(ctx context.Context, dest interface{}, args ...interface{}) error {
+	panic("TODO(jae): 2022-10-22: Support stmt.SelectContext")
+	// return SelectContext(ctx, db, dest, query, args...)
+}
+
+// Select using the prepared statement.
+// Any placeholder parameters are replaced with supplied args.
+func (stmt *Stmt) Select(dest interface{}, args ...interface{}) error {
+	return stmt.SelectContext(context.Background(), dest, args...)
+}
+
 // GetContext using this statement.
 // Any placeholder parameters are replaced with supplied args.
 // An error is returned if the result set is empty.
