@@ -58,12 +58,34 @@ type caching struct {
 	reflector *dbreflect.ReflectModule
 }
 
+func (c *caching) getCachingData() caching {
+	return *c
+}
+
 // Rows is the result of a query. Its cursor starts before the first row
 // of the result set. Use Next to advance from row to row.
 type Rows struct {
 	rows *sql.Rows
 	// caching holds any structs that cache data needed for Scan
 	caching
+}
+
+type cachingObject interface {
+	getCachingData() caching
+}
+
+// NewRows creates a Rows struct for sqlsw
+//
+// This function exists so the sqlx compatbility layer can create Rows objects
+func NewRows(rows *sql.Rows, cachingData cachingObject) *Rows {
+	return newRows(rows, cachingData.getCachingData())
+}
+
+func newRows(rows *sql.Rows, cachingData caching) *Rows {
+	r := &Rows{}
+	r.rows = rows
+	r.caching = cachingData
+	return r
 }
 
 // Close closes the Rows, preventing further enumeration. If Next is called
@@ -88,13 +110,6 @@ func (rows *Rows) Err() error {
 // Every call to Scan, even the first one, must be preceded by a call to Next.
 func (rows *Rows) Next() bool {
 	return rows.rows.Next()
-}
-
-func newRows(rows *sql.Rows, cachingData caching) *Rows {
-	r := &Rows{}
-	r.rows = rows
-	r.caching = cachingData
-	return r
 }
 
 // Tx is an in-progress database transaction.
@@ -127,6 +142,11 @@ func newNamedStmt(stmt *sql.Stmt, parameters []string) *NamedStmt {
 	s.underlying = stmt
 	s.parameters = parameters
 	return s
+}
+
+// Stmt gets the underlying "database/sql" statement
+func (stmt *NamedStmt) Stmt() *sql.Stmt {
+	return stmt.underlying
 }
 
 // Close closes the statement.
@@ -216,7 +236,7 @@ func NamedQueryContext(ctx context.Context, dbOrTx namedQuery, query string, str
 	case *Tx:
 		return dbOrTx.NamedQueryContext(ctx, query, structOrMapOrSlice)
 	}
-	return nil, errors.New("unable to execute NamedQueryContext, must be database or transaction")
+	return nil, errors.New("unable to execute NamedQueryContext, must be sqlsw database or transaction")
 }
 
 // Row is the result of calling QueryRow to select a single row.
