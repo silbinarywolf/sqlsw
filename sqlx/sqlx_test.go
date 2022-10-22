@@ -340,7 +340,7 @@ func TestMissingNames(t *testing.T) {
 			t.Fatal(err)
 		}
 		// its internal stmt should be marked unsafe
-		if !nstmt.Stmt.unsafe {
+		if !nstmt.unsafe { // note(jae): 2022-10-22: SQLX tested for `if !nstmt.Stmt.unsafe {`
 			t.Error("expected NamedStmt to be unsafe but its underlying stmt did not inherit safety")
 		}
 		pps = []PersonPlus{}

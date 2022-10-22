@@ -12,8 +12,8 @@ import (
 type DB struct {
 	db         sqlsw.DB
 	driverName string
-	// allowUnknownFields maps to unsafe in sqlx
-	allowUnknownFields bool
+	// unsafe is true when unknown fields are allowed
+	unsafe bool
 }
 
 func Open(driverName, dataSourceName string) (*DB, error) {
@@ -35,6 +35,7 @@ func (db *DB) PrepareNamedContext(ctx context.Context, query string) (*NamedStmt
 	}
 	stmt := &NamedStmt{}
 	stmt.namedStmt = *namedStmtUnderlying
+	stmt.unsafe = db.unsafe
 	return stmt, nil
 }
 
@@ -72,7 +73,7 @@ type Ext interface {
 func (db *DB) Unsafe() *DB {
 	newDB := new(DB)
 	*newDB = *db
-	newDB.allowUnknownFields = true
+	newDB.unsafe = true
 	return newDB
 }
 
@@ -175,7 +176,22 @@ func (db *DB) Exec(query string, args ...interface{}) (sql.Result, error) {
 	return sqlsw.SQLX_DB(&db.db).Exec(query, args...)
 }
 
-// QueryxContext queries the database and returns an *sqlx.Rows.
+// Query executes a query that returns rows, typically a SELECT.
+// The args are for any placeholder parameters in the query.
+//
+// Query uses context.Background internally; to specify the context, use
+// QueryContext.
+func (db *DB) Query(query string, args ...interface{}) (*sql.Rows, error) {
+	return db.QueryContext(context.Background(), query, args...)
+}
+
+// QueryxContext queries the database and returns an *sqlx.Rows, typically a SELECT.
+// Any placeholder parameters are replaced with supplied args.
+func (db *DB) Queryx(query string, args ...interface{}) (*Rows, error) {
+	return db.QueryxContext(context.Background(), query, args...)
+}
+
+// QueryxContext queries the database and returns an *sqlx.Rows, typically a SELECT.
 // Any placeholder parameters are replaced with supplied args.
 func (db *DB) QueryxContext(ctx context.Context, query string, args ...interface{}) (*Rows, error) {
 	sqlRows, err := db.QueryContext(ctx, query, args...)
@@ -184,12 +200,17 @@ func (db *DB) QueryxContext(ctx context.Context, query string, args ...interface
 	}
 	rowsUnderlying := sqlsw.SQLX_NewRows(sqlRows, &db.db)
 	return &Rows{
-		rows:               *rowsUnderlying,
-		allowUnknownFields: db.allowUnknownFields,
+		rows:   *rowsUnderlying,
+		unsafe: db.unsafe,
 		// note(jae): 2022-10-22
 		// Not supporting Mapper, at least at time of writing
 		// Mapper: db.Mapper
 	}, err
+}
+
+// PrepareNamed returns an sqlx.NamedStmt
+func (db *DB) PrepareNamed(query string) (*NamedStmt, error) {
+	return db.PrepareNamedContext(context.Background(), query)
 }
 
 // BindNamed binds a query using the DB driver's bindvar type.
@@ -228,10 +249,25 @@ func (db *DB) Get(dest interface{}, query string, args ...interface{}) error {
 
 type NamedStmt struct {
 	namedStmt sqlsw.NamedStmt
+	// unsafe is true when unknown fields are allowed
+	unsafe bool
 }
 
 func (n *NamedStmt) QueryxContext(ctx context.Context, structOrMapArg interface{}) (*Rows, error) {
 	panic("TODO(jae): 2022-10-22: Support QueryxContext")
+}
+
+func (n *NamedStmt) Unsafe() *NamedStmt {
+	newNamedStmt := new(NamedStmt)
+	*newNamedStmt = *n
+	newNamedStmt.unsafe = true
+	return newNamedStmt
+}
+
+// Select using this NamedStmt
+// Any named placeholder parameters are replaced with fields from structOrMapArg.
+func (n *NamedStmt) Select(dest interface{}, structOrMapArg interface{}) error {
+	return n.SelectContext(context.Background(), dest, structOrMapArg)
 }
 
 // SelectContext using this NamedStmt
@@ -258,6 +294,10 @@ func (n *NamedStmt) ExecContext(ctx context.Context, structOrMapArg interface{})
 	return n.namedStmt.Stmt().ExecContext(ctx, args...) */
 }
 
+func (stmt *NamedStmt) Stmt() *sql.Stmt {
+	return sqlsw.SQLX_NamedStmt(&stmt.namedStmt)
+}
+
 // Close closes the statement.
 func (stmt *NamedStmt) Close() error {
 	return stmt.namedStmt.Close()
@@ -266,8 +306,9 @@ func (stmt *NamedStmt) Close() error {
 // Rows is the result of a query. Its cursor starts before the first row
 // of the result set. Use Next to advance from row to row.
 type Rows struct {
-	rows               sqlsw.Rows
-	allowUnknownFields bool
+	rows sqlsw.Rows
+	// unsafe is true when unknown fields are allowed
+	unsafe bool
 }
 
 func (rows *Rows) Next() bool {
@@ -301,8 +342,9 @@ func (rows *Rows) StructScan(ptrValue interface{}) error {
 
 // Row is the result of calling QueryRow to select a single row.
 type Row struct {
-	row                sqlsw.Row
-	allowUnknownFields bool
+	row sqlsw.Row
+	// unsafe is true when unknown fields are allowed
+	unsafe bool
 }
 
 // GetContext does a QueryRow using the provided Queryer, and scans the
@@ -319,6 +361,8 @@ func GetContext(ctx context.Context, q QueryerContext, dest interface{}, query s
 // Tx is an in-progress database transaction.
 type Tx struct {
 	underlying sqlsw.Tx
+	// unsafe is true when unknown fields are allowed
+	unsafe bool
 }
 
 // Commit commits the transaction.
@@ -382,4 +426,47 @@ func StructScan(rows rowsi, ptrValue interface{}) error {
 		return rows.StructScan(ptrValue) */
 	}
 	return errors.New("unable to execute StructScan")
+}
+
+// determine if any of our extensions are unsafe
+func isUnsafe(i interface{}) bool {
+	switch v := i.(type) {
+	case Row:
+		return v.unsafe
+	case *Row:
+		return v.unsafe
+	case Rows:
+		return v.unsafe
+	case *Rows:
+		return v.unsafe
+	case NamedStmt:
+		return v.unsafe
+
+		//return v.Stmt.unsafe
+	case *NamedStmt:
+		return v.unsafe
+		// note(jae): 2022-10-22
+		// Original SQLX checked for this:
+		// return v.Stmt.unsafe
+	/* case Stmt:
+		return v.unsafe
+	case *Stmt:
+		return v.unsafe
+	case qStmt:
+		return v.unsafe
+	case *qStmt:
+		return v.unsafe */
+	case DB:
+		return v.unsafe
+	case *DB:
+		return v.unsafe
+	case Tx:
+		return v.unsafe
+	case *Tx:
+		return v.unsafe
+	case sql.Rows, *sql.Rows:
+		return false
+	default:
+		return false
+	}
 }

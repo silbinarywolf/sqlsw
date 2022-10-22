@@ -25,6 +25,11 @@ func SQLX_Tx(tx *Tx) *sql.Tx { return tx.underlying }
 // Deprecated: This may be changed or removed in the future. Do not use.
 func SQLX_Rows(rows *Rows) *sql.Rows { return rows.rows }
 
+// SQLX_NamedStmt returns the underlying "database/sql" handle
+//
+// Deprecated: This may be changed or removed in the future. Do not use.
+func SQLX_NamedStmt(namedStmt *NamedStmt) *sql.Stmt { return namedStmt.underlying }
+
 // SQLX_NewRows creates a Rows struct
 //
 // Deprecated: This may be changed or removed in the future. Do not use.
