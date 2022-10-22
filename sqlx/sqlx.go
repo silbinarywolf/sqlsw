@@ -333,7 +333,7 @@ func (db *DB) Preparex(query string) (*Stmt, error) {
 // SelectContext using this DB.
 // Any placeholder parameters are replaced with supplied args.
 func (db *DB) SelectContext(ctx context.Context, dest interface{}, query string, args ...interface{}) error {
-	panic("TODO(jae): 2022-10-22: Implement SelectContext")
+	panic("TODO(jae): 2022-10-22: Implement db.SelectContext")
 	//return SelectContext(ctx, db, dest, query, args...)
 }
 
@@ -394,7 +394,7 @@ func (n *NamedStmt) SelectContext(ctx context.Context, dest interface{}, structO
 	}
 	// if something happens here, we want to make sure the rows are Closed
 	defer rows.Close()
-	return errors.New("TODO(jae): 2022-10-22: Implement SelectContext")
+	return errors.New("TODO(jae): 2022-10-22: Implement namedStmt.SelectContext")
 	// return scanAll(rows, dest, false)
 }
 
@@ -436,10 +436,6 @@ type metadataInfo struct {
 //func (meta *metadataInfo) isUnsafe() bool {
 //	return meta.unsafe
 //}
-
-type metadatai interface {
-	isUnsafe() bool
-}
 
 type Stmt struct {
 	stmt *sql.Stmt
