@@ -5,6 +5,8 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
+	"reflect"
 
 	"github.com/silbinarywolf/sqlsw"
 )
@@ -75,6 +77,10 @@ func (db *DB) Unsafe() *DB {
 	*newDB = *db
 	newDB.unsafe = true
 	return newDB
+}
+
+func (db *DB) isUnsafe() bool {
+	return db.unsafe
 }
 
 // Rebind a query within a transaction's bindvar type.
@@ -276,8 +282,11 @@ func (*DB) BindNamed(query string, structOrMapArg interface{}) (string, []interf
 // The provided context is used for the preparation of the statement, not for
 // the execution of the statement.
 func (db *DB) PreparexContext(ctx context.Context, query string) (*Stmt, error) {
-	panic("TODO(jae): 2022-10-22: Implement PreparexContext")
-	//return PreparexContext(ctx, db, query)
+	stmt, err := sqlsw.SQLX_DB(&db.db).PrepareContext(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	return newStmt(stmt, db), nil
 }
 
 // Preparex returns an sqlx.Stmt instead of a sql.Stmt.
@@ -368,9 +377,9 @@ func (n *NamedStmt) ExecContext(ctx context.Context, structOrMapArg interface{})
 	return n.namedStmt.Stmt().ExecContext(ctx, args...) */
 }
 
-func (stmt *NamedStmt) Stmt() *sql.Stmt {
-	return sqlsw.SQLX_NamedStmt(&stmt.namedStmt)
-}
+// func (stmt *NamedStmt) Stmt() *sql.Stmt {
+//	return sqlsw.SQLX_NamedStmt(&stmt.namedStmt)
+//}
 
 // Close closes the statement.
 func (stmt *NamedStmt) Close() error {
@@ -380,7 +389,39 @@ func (stmt *NamedStmt) Close() error {
 // todo(jae): 2022-10-22
 // Implement Stmt wrapper
 type Stmt struct {
-	stmt sql.Stmt
+	stmt *sql.Stmt
+	// unsafe is true when unknown fields are allowed
+	unsafe bool
+}
+
+func (stmt *Stmt) isUnsafe() bool {
+	return stmt.unsafe
+}
+
+type metadatai interface {
+	isUnsafe() bool
+}
+
+func newStmt(stmt *sql.Stmt, metadata metadatai) *Stmt {
+	return &Stmt{
+		stmt:   stmt,
+		unsafe: metadata.isUnsafe(),
+	}
+}
+
+// GetContext using this statement.
+// Any placeholder parameters are replaced with supplied args.
+// An error is returned if the result set is empty.
+func (stmt *Stmt) GetContext(ctx context.Context, dest interface{}, query string, args ...interface{}) error {
+	panic("TODO(jae): 2022-10-22: Support stmt.GetContext")
+	// return GetContext(ctx, db, dest, query, args...)
+}
+
+// Get using this statement.
+// Any placeholder parameters are replaced with supplied args.
+// An error is returned if the result set is empty.
+func (stmt *Stmt) Get(dest interface{}, query string, args ...interface{}) error {
+	return stmt.GetContext(context.Background(), dest, query, args...)
 }
 
 // QueryRowx queries the database and returns an *sqlx.Row.
@@ -488,6 +529,63 @@ type Tx struct {
 	unsafe bool
 }
 
+func (tx *Tx) isUnsafe() bool {
+	return tx.unsafe
+}
+
+// StmtContext returns a transaction-specific prepared statement from
+// an existing statement.
+//
+// Example:
+//
+//	updateMoney, err := db.Prepare("UPDATE balance SET money=money+? WHERE id=?")
+//	...
+//	tx, err := db.Begin()
+//	...
+//	res, err := tx.StmtContext(ctx, updateMoney).Exec(123.45, 98293203)
+//
+// The provided context is used for the preparation of the statement, not for the
+// execution of the statement.
+//
+// The returned statement operates within the transaction and will be closed
+// when the transaction has been committed or rolled back.
+func (tx *Tx) StmtContext(ctx context.Context, stmt *sql.Stmt) *sql.Stmt {
+	return sqlsw.SQLX_Tx(&tx.underlying).StmtContext(ctx, stmt)
+}
+
+// Stmt returns a transaction-specific prepared statement from
+// an existing statement.
+func (tx *Tx) Stmt(stmt *sql.Stmt) *sql.Stmt {
+	return tx.StmtContext(context.Background(), stmt)
+}
+
+// Stmtx returns a version of the prepared statement which runs within a transaction.  Provided
+// stmt can be either *sql.Stmt or *sqlx.Stmt.
+func (tx *Tx) Stmtx(stmt interface{}) *Stmt {
+	var (
+		s *sql.Stmt
+	)
+	switch v := stmt.(type) {
+	case Stmt:
+		s = v.stmt
+	case *Stmt:
+		s = v.stmt
+	case *sql.Stmt:
+		s = v
+	default:
+		panic(fmt.Sprintf("non-statement type %v passed to Stmtx", reflect.ValueOf(stmt).Type()))
+	}
+	return &Stmt{
+		stmt: tx.Stmt(s),
+		// note(jae): 2022-10-22
+		// this isn't set in SQLX, so we're keeping this behaviour.
+		// unsafe: false,
+		// note(jae): 2022-10-22
+		// Not supporting mapper for the time-being
+		// Mapper: tx.Mapper
+	}
+}
+
 // Commit commits the transaction.
 func (tx *Tx) Commit() error {
 	return tx.underlying.Commit()
@@ -571,11 +669,13 @@ func isUnsafe(i interface{}) bool {
 		// note(jae): 2022-10-22
 		// Original SQLX checked for this:
 		// return v.Stmt.unsafe
-	/* case Stmt:
+	case Stmt:
 		return v.unsafe
 	case *Stmt:
 		return v.unsafe
-	case qStmt:
+	// todo(jae): 2022-10-22
+	// implement qStmt support if needed
+	/* case qStmt:
 		return v.unsafe
 	case *qStmt:
 		return v.unsafe */
