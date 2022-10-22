@@ -25,6 +25,11 @@ func SQLX_Tx(tx *Tx) *sql.Tx { return tx.underlying }
 // Deprecated: This may be changed or removed in the future. Do not use.
 func SQLX_Rows(rows *Rows) *sql.Rows { return rows.rows }
 
+// SQLX_Rows_From_Row returns the underlying "database/sql" handle
+//
+// Deprecated: This may be changed or removed in the future. Do not use.
+func SQLX_Rows_From_Row(row *Row) *sql.Rows { return row.rows.rows }
+
 // SQLX_NamedStmt returns the underlying "database/sql" handle
 //
 // Deprecated: This may be changed or removed in the future. Do not use.

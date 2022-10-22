@@ -94,6 +94,12 @@ func (db *DB) QueryContext(ctx context.Context, query string, args ...interface{
 	return sqlsw.SQLX_DB(&db.db).QueryContext(ctx, query, args...)
 }
 
+// QueryRowx queries the database and returns an *sqlx.Row.
+// Any placeholder parameters are replaced with supplied args.
+func (db *DB) QueryRowx(query string, args ...interface{}) *Row {
+	return db.QueryRowxContext(context.Background(), query, args...)
+}
+
 // QueryRowxContext queries the database and returns an *sqlx.Row.
 // Any placeholder parameters are replaced with supplied args.
 func (db *DB) QueryRowxContext(ctx context.Context, query string, args ...interface{}) *Row {
@@ -377,6 +383,18 @@ type Stmt struct {
 	stmt sql.Stmt
 }
 
+// QueryRowx queries the database and returns an *sqlx.Row.
+// Any placeholder parameters are replaced with supplied args.
+func (stmt *Stmt) QueryRowx(query string, args ...interface{}) *Row {
+	return stmt.QueryRowxContext(context.Background(), query, args...)
+}
+
+// QueryRowxContext queries the database and returns an *sqlx.Row.
+// Any placeholder parameters are replaced with supplied args.
+func (stmt *Stmt) QueryRowxContext(ctx context.Context, query string, args ...interface{}) *Row {
+	panic("todo(jae): 2022-10-22: implement stmt.QueryRowxContext")
+}
+
 // Rows is the result of a query. Its cursor starts before the first row
 // of the result set. Use Next to advance from row to row.
 type Rows struct {
@@ -431,6 +449,13 @@ type Row struct {
 	row sqlsw.Row
 	// unsafe is true when unknown fields are allowed
 	unsafe bool
+}
+
+// Scan copies the columns in the current row into the values pointed
+// at by dest. The number of values in dest must be the same as the
+// number of columns in Rows.
+func (row *Row) Scan(args ...interface{}) error {
+	return sqlsw.SQLX_Rows_From_Row(&row.row).Scan(args...)
 }
 
 // SliceScan using this Row
