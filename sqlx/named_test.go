@@ -1,8 +1,6 @@
 package sqlx
 
 import (
-	"database/sql"
-	"fmt"
 	"testing"
 )
 

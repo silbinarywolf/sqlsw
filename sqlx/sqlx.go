@@ -141,6 +141,14 @@ func (db *DB) QueryContext(ctx context.Context, query string, args ...interface{
 	return sqlsw.SQLX_DB(&db.db).QueryContext(ctx, query, args...)
 }
 
+func (db *DB) QueryRow(query string, args ...interface{}) *sql.Row {
+	return db.QueryRowContext(context.Background(), query, args...)
+}
+
+func (db *DB) QueryRowContext(ctx context.Context, query string, args ...interface{}) *sql.Row {
+	return sqlsw.SQLX_DB(&db.db).QueryRowContext(ctx, query, args...)
+}
+
 // QueryRowx queries the database and returns an *sqlx.Row.
 // Any placeholder parameters are replaced with supplied args.
 func (db *DB) QueryRowx(query string, args ...interface{}) *Row {

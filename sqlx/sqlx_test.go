@@ -1525,7 +1525,9 @@ func TestIssue197(t *testing.T) {
 	})
 }
 
-func TestIn(t *testing.T) {
+// todo(jae): 2022-10-22
+// Add backwards compatibility for In() function
+/* func TestIn(t *testing.T) {
 	// some quite normal situations
 	type tr struct {
 		q    string
@@ -1623,9 +1625,11 @@ func TestIn(t *testing.T) {
 			t.Errorf("Expecting hong kong second, but got %#v", places[1])
 		}
 	})
-}
+} */
 
-func TestBindStruct(t *testing.T) {
+// todo(jae): 2022-10-22
+// Add tests for bindStruct, likely just test against sqlparser
+/* func TestBindStruct(t *testing.T) {
 	var err error
 
 	q1 := `INSERT INTO foo (a, b, c, d) VALUES (:name, :age, :first, :last)`
@@ -1709,7 +1713,7 @@ func TestBindStruct(t *testing.T) {
 	if args[2].(string) != "World" {
 		t.Errorf("Expected 'World', got %s\n", args[0].(string))
 	}
-}
+} */
 
 func TestEmbeddedLiterals(t *testing.T) {
 	var schema = Schema{
@@ -1753,7 +1757,9 @@ func TestEmbeddedLiterals(t *testing.T) {
 	})
 }
 
-func BenchmarkBindStruct(b *testing.B) {
+// todo(jae): 2022-10-22
+// Re-add benchmarks for bindStruct
+/* func BenchmarkBindStruct(b *testing.B) {
 	b.StopTimer()
 	q1 := `INSERT INTO foo (a, b, c, d) VALUES (:name, :age, :first, :last)`
 	type t struct {
@@ -1767,7 +1773,7 @@ func BenchmarkBindStruct(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		bindStruct(DOLLAR, q1, am, mapper())
 	}
-}
+} */
 
 // note(jae): 2022-10-22
 // Not supporitng Mapper / NewMapperFunc / MapperFunc for time-being
@@ -1798,7 +1804,9 @@ func BenchmarkBindStruct(b *testing.B) {
 	}
 } */
 
-func BenchmarkBindMap(b *testing.B) {
+// todo(jae): 2022-10-22
+// Re-add benchmarks for "bindMap", likely a wrapper around "transformNamedQueryAndParams"
+/* func BenchmarkBindMap(b *testing.B) {
 	b.StopTimer()
 	q1 := `INSERT INTO foo (a, b, c, d) VALUES (:name, :age, :first, :last)`
 	am := map[string]interface{}{
@@ -1811,9 +1819,11 @@ func BenchmarkBindMap(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		bindMap(DOLLAR, q1, am)
 	}
-}
+} */
 
-func BenchmarkIn(b *testing.B) {
+// todo(jae): 2022-10-22
+// Re-add benchmarks for In() functions
+/* func BenchmarkIn(b *testing.B) {
 	q := `SELECT * FROM foo WHERE x = ? AND v in (?) AND y = ?`
 
 	for i := 0; i < b.N; i++ {
@@ -1849,9 +1859,11 @@ func BenchmarkIn1kString(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		_, _, _ = In(q, []interface{}{"foo", vals[:], "bar"}...)
 	}
-}
+}*/
 
-func BenchmarkRebind(b *testing.B) {
+// todo(jae): 2022-10-22
+// Re-add benchmarks for Rebind()
+/* func BenchmarkRebind(b *testing.B) {
 	b.StopTimer()
 	q1 := `INSERT INTO foo (a, b, c, d, e, f, g, h, i) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
 	q2 := `INSERT INTO foo (a, b, c) VALUES (?, ?, "foo"), ("Hi", ?, ?)`
@@ -1861,9 +1873,12 @@ func BenchmarkRebind(b *testing.B) {
 		Rebind(DOLLAR, q1)
 		Rebind(DOLLAR, q2)
 	}
-}
+} */
 
-func BenchmarkRebindBuffer(b *testing.B) {
+// note(jae): 2022-10-22
+// An benchmark of the experiment rebindBuff function.
+// Don't bother reimplementing.
+/* func BenchmarkRebindBuffer(b *testing.B) {
 	b.StopTimer()
 	q1 := `INSERT INTO foo (a, b, c, d, e, f, g, h, i) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
 	q2 := `INSERT INTO foo (a, b, c) VALUES (?, ?, "foo"), ("Hi", ?, ?)`
@@ -1873,8 +1888,11 @@ func BenchmarkRebindBuffer(b *testing.B) {
 		rebindBuff(DOLLAR, q1)
 		rebindBuff(DOLLAR, q2)
 	}
-}
+} */
 
+// todo(jae): 2022-10-22
+// Re-add testing for In() function
+/*
 func TestIn130Regression(t *testing.T) {
 	t.Run("[]interface{}{}", func(t *testing.T) {
 		q, args, err := In("SELECT * FROM people WHERE name IN (?)", []interface{}{[]string{"gopher"}}...)
@@ -1913,7 +1931,7 @@ func TestIn130Regression(t *testing.T) {
 			}
 		}
 	})
-}
+} */
 
 func TestSelectReset(t *testing.T) {
 	RunWithSchema(defaultSchema, t, func(db *DB, t *testing.T, now string) {
