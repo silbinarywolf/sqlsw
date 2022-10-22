@@ -385,6 +385,18 @@ type Rows struct {
 	unsafe bool
 }
 
+// SliceScan using Rows
+func (rows *Rows) SliceScan() ([]interface{}, error) {
+	panic("todo(jae): 2022-10-22: Implement rows.SliceScan")
+	// return SliceScan(r)
+}
+
+// MapScan scans a single Row into the dest map[string]interface{}.
+func (rows *Rows) MapScan(dest map[string]interface{}) error {
+	panic("todo(jae): 2022-10-22: Implement rows.MapScan")
+	// return MapScan(r)
+}
+
 func (rows *Rows) Next() bool {
 	return rows.rows.Next()
 }
@@ -419,6 +431,18 @@ type Row struct {
 	row sqlsw.Row
 	// unsafe is true when unknown fields are allowed
 	unsafe bool
+}
+
+// SliceScan using this Row
+func (row *Row) SliceScan() ([]interface{}, error) {
+	panic("todo(jae): 2022-10-22: Implement row.SliceScan")
+	// return SliceScan(r)
+}
+
+// MapScan scans a single Row into the dest map[string]interface{}.
+func (rows *Row) MapScan(dest map[string]interface{}) error {
+	panic("todo(jae): 2022-10-22: Implement row.MapScan")
+	// return MapScan(r)
 }
 
 // GetContext does a QueryRow using the provided Queryer, and scans the
