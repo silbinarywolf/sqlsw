@@ -180,6 +180,20 @@ func (tx *Tx) NamedPrepareContext(ctx context.Context, query string) (*NamedStmt
 	return newNamedStmt(stmt, parseResult.Parameters()), nil
 }
 
+// NamedExecContext executes a query without returning any rows.
+// The args are for any placeholder parameters in the query.
+func (db *DB) NamedExecContext(ctx context.Context, query string, structOrMapOrSlice interface{}) (sql.Result, error) {
+	query, argList, err := transformNamedQueryAndParams(db.reflector, db.bindType, query, structOrMapOrSlice)
+	if err != nil {
+		return nil, err
+	}
+	sqlResult, err := db.db.ExecContext(ctx, query, argList...)
+	if err != nil {
+		return nil, err
+	}
+	return sqlResult, nil
+}
+
 // NamedQueryContext executes a query that returns rows, typically a SELECT.
 func (db *DB) NamedQueryContext(ctx context.Context, query string, structOrMapOrSlice interface{}) (*Rows, error) {
 	query, argList, err := transformNamedQueryAndParams(db.reflector, db.bindType, query, structOrMapOrSlice)
@@ -217,6 +231,20 @@ func (stmt *NamedStmt) NamedQueryContext(ctx context.Context, structOrMapOrSlice
 		return nil, err
 	}
 	return newRows(rows, stmt.caching), nil
+}
+
+// NamedExecContext executes a query without returning any rows.
+// The args are for any placeholder parameters in the query.
+func (stmt *NamedStmt) NamedExecContext(ctx context.Context, structOrMapOrSlice interface{}) (sql.Result, error) {
+	argList, err := getArgumentListFromParameters(stmt.reflector, stmt.parameters, structOrMapOrSlice)
+	if err != nil {
+		return nil, err
+	}
+	sqlResult, err := stmt.underlying.ExecContext(ctx, argList...)
+	if err != nil {
+		return nil, err
+	}
+	return sqlResult, nil
 }
 
 // namedQuery is an interface for calling NamedQueryContext with a database or transaction

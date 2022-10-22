@@ -662,7 +662,10 @@ func TestNamedQuery(t *testing.T) {
 		// these are tests for #73;  they verify that named queries work if you've
 		// changed the db mapper.  This code checks both NamedQuery "ad-hoc" style
 		// queries and NamedStmt queries, which use different code paths internally.
-		old := *db.Mapper
+
+		// note(jae): 2022-10-22
+		// Not supporting Mapper for now
+		//old := *db.Mapper
 
 		type JSONPerson struct {
 			FirstName sql.NullString `json:"FIRST"`
@@ -675,8 +678,9 @@ func TestNamedQuery(t *testing.T) {
 			LastName:  sql.NullString{String: "smith", Valid: true},
 			Email:     sql.NullString{String: "ben@smith.com", Valid: true},
 		}
-
-		db.Mapper = reflectx.NewMapperFunc("json", strings.ToUpper)
+		// note(jae): 2022-10-22
+		// Not supporting Mapper for now
+		// db.Mapper = reflectx.NewMapperFunc("json", strings.ToUpper)
 
 		// prepare queries for case sensitivity to test our ToUpper function.
 		// postgres and sqlite accept "", but mysql uses ``;  since Go's multi-line
@@ -747,7 +751,9 @@ func TestNamedQuery(t *testing.T) {
 
 		check(t, rows)
 
-		db.Mapper = &old
+		// note(jae): 2022-10-22
+		// Not supporting Mapper for now
+		//db.Mapper = &old
 
 		// Test nested structs
 		type Place struct {

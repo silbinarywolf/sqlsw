@@ -208,6 +208,52 @@ func (db *DB) QueryxContext(ctx context.Context, query string, args ...interface
 	}, err
 }
 
+// ExecContext executes a query without returning any rows.
+// The args are for any placeholder parameters in the query.
+func (db *DB) ExecContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
+	return sqlsw.SQLX_DB(&db.db).ExecContext(ctx, query, args...)
+}
+
+// MustExec using this DB.
+// Any named placeholder parameters are replaced with fields from arg.
+func (db *DB) MustExec(query string, args ...interface{}) sql.Result {
+	r, err := db.ExecContext(context.Background(), query, args...)
+	if err != nil {
+		panic(err)
+	}
+	return r
+}
+
+// NamedExecContext using this DB.
+// Any named placeholder parameters are replaced with fields from arg.
+func (db *DB) NamedExecContext(ctx context.Context, query string, structOrMapArg interface{}) (sql.Result, error) {
+	return db.db.NamedExecContext(ctx, query, structOrMapArg)
+}
+
+// NamedExec using this DB.
+// Any named placeholder parameters are replaced with fields from arg.
+func (db *DB) NamedExec(query string, structOrMapArg interface{}) (sql.Result, error) {
+	return db.NamedExecContext(context.Background(), query, structOrMapArg)
+}
+
+func (db *DB) NamedQueryContext(ctx context.Context, query string, structOrMapArg interface{}) (*Rows, error) {
+	rowsUnderlying, err := db.db.NamedQueryContext(ctx, query, structOrMapArg)
+	if err != nil {
+		return nil, err
+	}
+	return &Rows{
+		rows:   *rowsUnderlying,
+		unsafe: db.unsafe,
+		// note(jae): 2022-10-22
+		// Not supporting Mapper, at least at time of writing
+		// Mapper: db.Mapper
+	}, err
+}
+
+func (db *DB) NamedQuery(query string, structOrMapArg interface{}) (*Rows, error) {
+	return db.NamedQueryContext(context.Background(), query, structOrMapArg)
+}
+
 // PrepareNamed returns an sqlx.NamedStmt
 func (db *DB) PrepareNamed(query string) (*NamedStmt, error) {
 	return db.PrepareNamedContext(context.Background(), query)
