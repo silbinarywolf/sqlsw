@@ -348,5 +348,5 @@ func StructScan(rows rowsi, ptrValue interface{}) error {
 		}
 		return rows.StructScan(ptrValue) */
 	}
-	return nil, errors.New("unable to execute StructScan, must be sqlx rows")
+	return errors.New("unable to execute StructScan")
 }
