@@ -499,6 +499,11 @@ func (row *Row) Scan(args ...interface{}) error {
 	return sqlsw.SQLX_Rows_From_Row(&row.row).Scan(args...)
 }
 
+// StructScan copies the columns in the current row into the given struct.
+func (rows *Row) StructScan(ptrValue interface{}) error {
+	return rows.row.ScanStruct(ptrValue)
+}
+
 // SliceScan using this Row
 func (row *Row) SliceScan() ([]interface{}, error) {
 	panic("todo(jae): 2022-10-22: Implement row.SliceScan")
