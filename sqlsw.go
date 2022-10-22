@@ -17,6 +17,18 @@ type DB struct {
 	dataAndCaching
 }
 
+func newDB(dbDriver *sql.DB, driverName string) (*DB, error) {
+	bindType, ok := getBindTypeFromDriverName(driverName)
+	if !ok {
+		return nil, errors.New("unable to get bind type for driver: " + driverName + "\nUse RegisterBindType to define how your database handles bound parameters.")
+	}
+	db := &DB{}
+	db.db = dbDriver
+	db.bindType = bindType
+	db.reflector = &dbreflect.ReflectModule{}
+	return db, nil
+}
+
 // Open opens a database specified by its database driver name and a
 // driver-specific data source name, usually consisting of at least a
 // database name and connection information.
@@ -30,15 +42,19 @@ func Open(driverName, dataSourceName string) (*DB, error) {
 	if err != nil {
 		return nil, err
 	}
-	bindType, ok := getBindTypeFromDriverName(driverName)
-	if !ok {
-		return nil, errors.New("unable to get bind type for driver: " + driverName + "\nUse RegisterBindType to define how your database handles bound parameters.")
+	db, err := newDB(dbDriver, driverName)
+	if err != nil {
+		return nil, err
 	}
-	db := &DB{}
-	db.db = dbDriver
-	db.bindType = bindType
-	db.reflector = &dbreflect.ReflectModule{}
 	return db, nil
+}
+
+func (db *DB) Close() error {
+	return db.db.Close()
+}
+
+func (db *DB) PingContext(ctx context.Context) error {
+	return db.db.PingContext(ctx)
 }
 
 // DB returns the underlying "database/sql" handle

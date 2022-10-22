@@ -10,6 +10,14 @@ import (
 // This file contains any SQLX compatbility layer functions
 // None of this are guaranteed to work in the future so do not use this.
 
+// SQLX_CompatNewDB exists to support NewDb in the sqlx backwards compatibility driver.
+//
+// Deprecated: This may be changed or removed in the future. Do not use.
+func SQLX_CompatNewDB(db *sql.DB, driverName string) (*DB, error) {
+	dbWrapper, err := newDB(db, driverName)
+	return dbWrapper, err
+}
+
 // SQLX_DB returns the underlying "database/sql" handle
 //
 // Deprecated: This may be changed or removed in the future. Do not use.

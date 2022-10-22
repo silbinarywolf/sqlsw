@@ -22,7 +22,6 @@ import (
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
-	"github.com/jmoiron/sqlx/reflectx"
 	_ "github.com/lib/pq"
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -34,7 +33,7 @@ import (
 /* var _, _ Ext = &DB{}, &Tx{}
 var _, _ ColScanner = &Row{}, &Rows{}
 var _ Queryer = &qStmt{}
-var _ Execer = &qStmt{}
+var _ Execer = &qStmt{} */
 
 var TestPostgres = true
 var TestSqlite = true
@@ -43,11 +42,10 @@ var TestMysql = true
 var sldb *DB
 var pgdb *DB
 var mysqldb *DB
-var active = []*DB{} */
+var active = []*DB{}
 
-/*
 func init() {
-	//ConnectAll()
+	ConnectAll()
 }
 
 func ConnectAll() {
@@ -94,7 +92,7 @@ func ConnectAll() {
 	} else {
 		fmt.Println("Disabling SQLite tests.")
 	}
-} */
+}
 
 type Schema struct {
 	create string
@@ -1216,7 +1214,10 @@ func TestUsage(t *testing.T) {
 
 		// test name mapping
 		// THIS USED TO WORK BUT WILL NO LONGER WORK.
-		db.MapperFunc(strings.ToUpper)
+		//
+		// note(jae): 2022-10-22
+		// We do not currently support Mapper/MapperFunc
+		/* db.MapperFunc(strings.ToUpper)
 		rsa := CPlace{}
 		err = db.Get(&rsa, "SELECT * FROM capplace;")
 		if err != nil {
@@ -1237,10 +1238,13 @@ func TestUsage(t *testing.T) {
 		err = db.Get(&rsa, "SELECT * FROM cappplace;")
 		if err == nil {
 			t.Error("Expected no error, got ", err)
-		}
+		} */
 
 		// test base type slices
-		var sdest []string
+		//
+		// todo(jae): 2022-10-22
+		// Adjust this code to be tested without implementing scanAll.
+		/*var sdest []string
 		rows, err = db.Queryx("SELECT email FROM person ORDER BY email ASC;")
 		if err != nil {
 			t.Error(err)
@@ -1248,7 +1252,7 @@ func TestUsage(t *testing.T) {
 		err = scanAll(rows, &sdest, false)
 		if err != nil {
 			t.Error(err)
-		}
+		}*/
 
 		// test Get with base types
 		var count int
@@ -1256,9 +1260,11 @@ func TestUsage(t *testing.T) {
 		if err != nil {
 			t.Error(err)
 		}
-		if count != len(sdest) {
-			t.Errorf("Expected %d == %d (count(*) vs len(SELECT ..)", count, len(sdest))
-		}
+		// todo(jae): 2022-10-22
+		// Adjust this code to be tested without implementing scanAll.
+		// if count != len(sdest) {
+		// 	t.Errorf("Expected %d == %d (count(*) vs len(SELECT ..)", count, len(sdest))
+		// }
 
 		// test Get and Select with time.Time, #84
 		var addedAt time.Time
@@ -1284,7 +1290,8 @@ func TestUsage(t *testing.T) {
 		}
 
 		// test Select...
-		sdest = []string{}
+		// sdest = []string{} // note(jae): 2022-10-22: Not just setting, declaring instead
+		var sdest = []string{}
 		err = db.Select(&sdest, "SELECT first_name FROM person ORDER BY first_name ASC;")
 		if err != nil {
 			t.Error(err)
@@ -1325,7 +1332,9 @@ func TestDoNotPanicOnConnect(t *testing.T) {
 	}
 }
 
-func TestRebind(t *testing.T) {
+// todo(jae): 2022-10-22
+// Implement and test "Rebind" for backwards compat
+/* func TestRebind(t *testing.T) {
 	q1 := `INSERT INTO foo (a, b, c, d, e, f, g, h, i) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 	q2 := `INSERT INTO foo (a, b, c) VALUES (?, ?, "foo"), ("Hi", ?, ?)`
 
@@ -1364,9 +1373,11 @@ func TestRebind(t *testing.T) {
 	if s2 != ex2 {
 		t.Error("q2 failed on Named params")
 	}
-}
+} */
 
-func TestBindMap(t *testing.T) {
+// todo(jae): 2022-10-22
+// Test "bindMap" cases
+/* func TestBindMap(t *testing.T) {
 	// Test that it works..
 	q1 := `INSERT INTO foo (a, b, c, d) VALUES (:name, :age, :first, :last)`
 	am := map[string]interface{}{
@@ -1397,7 +1408,7 @@ func TestBindMap(t *testing.T) {
 	if args[3].(string) != "Moiron" {
 		t.Errorf("Expected Moiron, got %v\n", args[3])
 	}
-}
+} */
 
 // Test for #117, embedded nil maps
 
@@ -1758,7 +1769,9 @@ func BenchmarkBindStruct(b *testing.B) {
 	}
 }
 
-func TestBindNamedMapper(t *testing.T) {
+// note(jae): 2022-10-22
+// Not supporitng Mapper / NewMapperFunc / MapperFunc for time-being
+/* func TestBindNamedMapper(t *testing.T) {
 	type A map[string]interface{}
 	m := reflectx.NewMapperFunc("db", NameMapper)
 	query, args, err := bindNamedMapper(DOLLAR, `select :x`, A{
@@ -1783,7 +1796,7 @@ func TestBindNamedMapper(t *testing.T) {
 	if !strings.Contains(err.Error(), "unsupported map type") {
 		t.Errorf("wrong error: %s", err)
 	}
-}
+} */
 
 func BenchmarkBindMap(b *testing.B) {
 	b.StopTimer()

@@ -14,8 +14,23 @@ import (
 type DB struct {
 	db         sqlsw.DB
 	driverName string
-	// unsafe is true when unknown fields are allowed
-	unsafe bool
+	metadataInfo
+}
+
+// NewDb returns a new sqlx DB wrapper for a pre-existing *sql.DB.  The
+// driverName of the original database is required for named query support.
+//
+// Unlike the original sqlx library, this version can crash if you haven't defined the bind types
+// for your driver yet.
+func NewDb(db *sql.DB, driverName string) *DB {
+	dbSw, err := sqlsw.SQLX_CompatNewDB(db, driverName)
+	if err != nil {
+		panic(err)
+	}
+	dbR := &DB{}
+	dbR.driverName = driverName
+	dbR.db = *dbSw
+	return dbR
 }
 
 func Open(driverName, dataSourceName string) (*DB, error) {
@@ -27,6 +42,32 @@ func Open(driverName, dataSourceName string) (*DB, error) {
 	db.driverName = driverName
 	db.db = *dbDriver
 	return db, err
+}
+
+// Connect to a database and verify with a ping.
+func Connect(driverName, dataSourceName string) (*DB, error) {
+	db, err := Open(driverName, dataSourceName)
+	if err != nil {
+		return nil, err
+	}
+	err = db.Ping()
+	if err != nil {
+		db.Close()
+		return nil, err
+	}
+	return db, nil
+}
+
+func (db *DB) Close() error {
+	return db.db.Close()
+}
+
+func (db *DB) Ping() error {
+	return db.db.PingContext(context.Background())
+}
+
+func (db *DB) PingContext(ctx context.Context) error {
+	return db.db.PingContext(ctx)
 }
 
 // PrepareNamedContext creates a prepared statement for later queries or executions.
@@ -211,13 +252,7 @@ func (db *DB) QueryxContext(ctx context.Context, query string, args ...interface
 		return nil, err
 	}
 	rowsUnderlying := sqlsw.SQLX_NewRows(sqlRows, &db.db)
-	return &Rows{
-		rows:   *rowsUnderlying,
-		unsafe: db.unsafe,
-		// note(jae): 2022-10-22
-		// Not supporting Mapper, at least at time of writing
-		// Mapper: db.Mapper
-	}, err
+	return newRows(*rowsUnderlying, db.metadataInfo), nil
 }
 
 // ExecContext executes a query without returning any rows.
@@ -253,13 +288,7 @@ func (db *DB) NamedQueryContext(ctx context.Context, query string, structOrMapAr
 	if err != nil {
 		return nil, err
 	}
-	return &Rows{
-		rows:   *rowsUnderlying,
-		unsafe: db.unsafe,
-		// note(jae): 2022-10-22
-		// Not supporting Mapper, at least at time of writing
-		// Mapper: db.Mapper
-	}, err
+	return newRows(*rowsUnderlying, db.metadataInfo), nil
 }
 
 func (db *DB) NamedQuery(query string, structOrMapArg interface{}) (*Rows, error) {
@@ -286,7 +315,7 @@ func (db *DB) PreparexContext(ctx context.Context, query string) (*Stmt, error) 
 	if err != nil {
 		return nil, err
 	}
-	return newStmt(stmt, db), nil
+	return newStmt(stmt, db.metadataInfo), nil
 }
 
 // Preparex returns an sqlx.Stmt instead of a sql.Stmt.
@@ -386,27 +415,32 @@ func (stmt *NamedStmt) Close() error {
 	return stmt.namedStmt.Close()
 }
 
-// todo(jae): 2022-10-22
-// Implement Stmt wrapper
-type Stmt struct {
-	stmt *sql.Stmt
+type metadataInfo struct {
 	// unsafe is true when unknown fields are allowed
 	unsafe bool
+	// note(jae): 2022-10-22
+	// Not supporting Mapper, at least at time of writing
+	// Mapper: db.Mapper
 }
 
-func (stmt *Stmt) isUnsafe() bool {
-	return stmt.unsafe
-}
+//func (meta *metadataInfo) isUnsafe() bool {
+//	return meta.unsafe
+//}
 
 type metadatai interface {
 	isUnsafe() bool
 }
 
-func newStmt(stmt *sql.Stmt, metadata metadatai) *Stmt {
-	return &Stmt{
-		stmt:   stmt,
-		unsafe: metadata.isUnsafe(),
-	}
+type Stmt struct {
+	stmt *sql.Stmt
+	metadataInfo
+}
+
+func newStmt(stmt *sql.Stmt, metadata metadataInfo) *Stmt {
+	newStmt := &Stmt{}
+	newStmt.stmt = stmt
+	newStmt.metadataInfo = metadata
+	return newStmt
 }
 
 // SelectContext using the prepared statement.
@@ -449,12 +483,26 @@ func (stmt *Stmt) QueryRowxContext(ctx context.Context, query string, args ...in
 	panic("todo(jae): 2022-10-22: implement stmt.QueryRowxContext")
 }
 
+func (stmt *Stmt) Queryx(query string, args ...interface{}) (*Rows, error) {
+	rows, err := stmt.stmt.Query(args...)
+	if err != nil {
+		return nil, err
+	}
+	return newRows(*sqlsw.SQLX_NewRows(rows, nil), stmt.metadataInfo), nil
+}
+
 // Rows is the result of a query. Its cursor starts before the first row
 // of the result set. Use Next to advance from row to row.
 type Rows struct {
 	rows sqlsw.Rows
-	// unsafe is true when unknown fields are allowed
-	unsafe bool
+	metadataInfo
+}
+
+func newRows(rows sqlsw.Rows, metadata metadataInfo) *Rows {
+	newRows := &Rows{}
+	newRows.rows = rows
+	newRows.metadataInfo = metadata
+	return newRows
 }
 
 // SliceScan using Rows
