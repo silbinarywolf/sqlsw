@@ -10,14 +10,10 @@ import (
 )
 
 type DB struct {
-	db sqlsw.DB
+	db         sqlsw.DB
+	driverName string
 	// allowUnknownFields maps to unsafe in sqlx
 	allowUnknownFields bool
-}
-
-// Tx is an in-progress database transaction.
-type Tx struct {
-	tx sqlsw.Tx
 }
 
 func Open(driverName, dataSourceName string) (*DB, error) {
@@ -26,6 +22,7 @@ func Open(driverName, dataSourceName string) (*DB, error) {
 		return nil, err
 	}
 	db := &DB{}
+	db.driverName = driverName
 	db.db = *dbDriver
 	return db, err
 }
@@ -68,6 +65,17 @@ type Ext interface {
 	Execer
 }
 
+// Rebind a query within a transaction's bindvar type.
+func (db *DB) Rebind(query string) string {
+	panic("TODO(jae): 2022-10-22: Implement Rebind")
+	//return Rebind(BindType(tx.driverName), query)
+}
+
+// DriverName returns the driverName passed to the Open function for this DB.
+func (db *DB) DriverName() string {
+	return db.driverName
+}
+
 // QueryContext executes a query that returns rows, typically a SELECT.
 // The args are for any placeholder parameters in the query.
 func (db *DB) QueryContext(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error) {
@@ -89,6 +97,67 @@ func (db *DB) QueryRowxContext(ctx context.Context, query string, args ...interf
 	} */
 }
 
+// MustBegin starts a transaction, and panics on error.  Returns an *sqlx.Tx instead
+// of an *sql.Tx.
+func (db *DB) MustBegin() *Tx {
+	tx, err := db.Beginx()
+	if err != nil {
+		panic(err)
+	}
+	return tx
+}
+
+// MustBeginTx starts a transaction, and panics on error.  Returns an *sqlx.Tx instead
+// of an *sql.Tx.
+//
+// The provided context is used until the transaction is committed or rolled
+// back. If the context is canceled, the sql package will roll back the
+// transaction. Tx.Commit will return an error if the context provided to
+// MustBeginContext is canceled.
+func (db *DB) MustBeginTx(ctx context.Context, opts *sql.TxOptions) *Tx {
+	tx, err := db.BeginTxx(ctx, opts)
+	if err != nil {
+		panic(err)
+	}
+	return tx
+}
+
+// Beginx begins a transaction and returns an *sqlx.Tx instead of an *sql.Tx.
+func (db *DB) Beginx() (*Tx, error) {
+	panic("TODO(jae): 2022-10-22: Implement db.Beginx")
+	/* tx, err := db.db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	return &Tx{
+		underlying: tx,
+		driverName: db.driverName,
+		unsafe:     db.unsafe,
+		//Mapper: db.Mapper
+	}, err */
+}
+
+// BeginTxx begins a transaction and returns an *sqlx.Tx instead of an
+// *sql.Tx.
+//
+// The provided context is used until the transaction is committed or rolled
+// back. If the context is canceled, the sql package will roll back the
+// transaction. Tx.Commit will return an error if the context provided to
+// BeginxContext is canceled.
+func (db *DB) BeginTxx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) {
+	panic("TODO(jae): 2022-10-22: Implement BeginTxx")
+	/* tx, err := db.db.BeginTx(ctx, opts)
+	if err != nil {
+		return nil, err
+	}
+	return &Tx{
+		tx:         tx,
+		driverName: db.DriverName(),
+		unsafe:     db.db,
+		//Mapper: db.Mapper
+	}, err */
+}
+
 // QueryxContext queries the database and returns an *sqlx.Rows.
 // Any placeholder parameters are replaced with supplied args.
 func (db *DB) QueryxContext(ctx context.Context, query string, args ...interface{}) (*Rows, error) {
@@ -96,7 +165,7 @@ func (db *DB) QueryxContext(ctx context.Context, query string, args ...interface
 	if err != nil {
 		return nil, err
 	}
-	rowsUnderlying := sqlsw.NewRows(sqlRows, &db.db)
+	rowsUnderlying := sqlsw.SQLX_NewRows(sqlRows, &db.db)
 	return &Rows{
 		rows:               *rowsUnderlying,
 		allowUnknownFields: db.allowUnknownFields,
@@ -190,4 +259,36 @@ func GetContext(ctx context.Context, q QueryerContext, dest interface{}, query s
 	panic("TODO(Jae): 202-10-22: Support QueryerContext")
 	//r := q.QueryRowxContext(ctx, query, args...)
 	//return r.scanAny(dest, false)
+}
+
+// Tx is an in-progress database transaction.
+type Tx struct {
+	underlying sqlsw.Tx
+}
+
+// Commit commits the transaction.
+func (tx *Tx) Commit() error {
+	return tx.underlying.Commit()
+}
+
+// Rollback aborts the transaction.
+func (tx *Tx) Rollback() error {
+	return tx.underlying.Rollback()
+}
+
+// Rebind a query within a transaction's bindvar type.
+func (tx *Tx) Rebind(query string) string {
+	panic("TODO(jae): 2022-10-22: Implement tx.Rebind")
+	//return Rebind(BindType(tx.driverName), query)
+}
+
+// NamedStmtContext returns a version of the prepared statement which runs
+// within a transaction.
+func (tx *Tx) NamedStmtContext(ctx context.Context, stmt *NamedStmt) *NamedStmt {
+	panic("TODO(jae): 2022-10-22: Implement tx.NamedStmtContext")
+	/* return &NamedStmt{
+		QueryString: stmt.QueryString,
+		Params:      stmt.Params,
+		Stmt:        tx.StmtxContext(ctx, stmt.Stmt),
+	} */
 }

@@ -74,10 +74,10 @@ type cachingObject interface {
 	getCachingData() caching
 }
 
-// NewRows creates a Rows struct for sqlsw
+// SQLX_NewRows creates a Rows struct
 //
-// This function exists so the sqlx compatbility layer can create Rows objects
-func NewRows(rows *sql.Rows, cachingData cachingObject) *Rows {
+// Deprecated: This function only exists so the sqlx compatbility layer can create Rows objects
+func SQLX_NewRows(rows *sql.Rows, cachingData cachingObject) *Rows {
 	return newRows(rows, cachingData.getCachingData())
 }
 
