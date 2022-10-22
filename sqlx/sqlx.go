@@ -265,6 +265,20 @@ func (*DB) BindNamed(query string, structOrMapArg interface{}) (string, []interf
 	// return bindNamedMapper(BindType(db.driverName), query, arg, db.Mapper)
 }
 
+// PreparexContext returns an sqlx.Stmt instead of a sql.Stmt.
+//
+// The provided context is used for the preparation of the statement, not for
+// the execution of the statement.
+func (db *DB) PreparexContext(ctx context.Context, query string) (*Stmt, error) {
+	panic("TODO(jae): 2022-10-22: Implement PreparexContext")
+	//return PreparexContext(ctx, db, query)
+}
+
+// Preparex returns an sqlx.Stmt instead of a sql.Stmt.
+func (db *DB) Preparex(query string) (*Stmt, error) {
+	return db.PreparexContext(context.Background(), query)
+}
+
 // SelectContext using this DB.
 // Any placeholder parameters are replaced with supplied args.
 func (db *DB) SelectContext(ctx context.Context, dest interface{}, query string, args ...interface{}) error {
@@ -297,6 +311,10 @@ type NamedStmt struct {
 	namedStmt sqlsw.NamedStmt
 	// unsafe is true when unknown fields are allowed
 	unsafe bool
+}
+
+func (n *NamedStmt) Queryx(structOrMapArg interface{}) (*Rows, error) {
+	return n.QueryxContext(context.Background(), structOrMapArg)
 }
 
 func (n *NamedStmt) QueryxContext(ctx context.Context, structOrMapArg interface{}) (*Rows, error) {
@@ -351,6 +369,12 @@ func (stmt *NamedStmt) Stmt() *sql.Stmt {
 // Close closes the statement.
 func (stmt *NamedStmt) Close() error {
 	return stmt.namedStmt.Close()
+}
+
+// todo(jae): 2022-10-22
+// Implement Stmt wrapper
+type Stmt struct {
+	stmt sql.Stmt
 }
 
 // Rows is the result of a query. Its cursor starts before the first row
