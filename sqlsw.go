@@ -130,6 +130,13 @@ type Tx struct {
 	dataAndCaching
 }
 
+func newTx(tx *sql.Tx, caching dataAndCaching) *Tx {
+	t := &Tx{}
+	t.underlying = tx
+	t.dataAndCaching = caching
+	return t
+}
+
 // Commit commits the transaction.
 func (tx *Tx) Commit() error {
 	return tx.underlying.Commit()
@@ -164,6 +171,14 @@ func (stmt *NamedStmt) Stmt() *sql.Stmt {
 // Close closes the statement.
 func (stmt *NamedStmt) Close() error {
 	return stmt.underlying.Close()
+}
+
+func (db *DB) Begin() (*Tx, error) {
+	tx, err := db.db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	return newTx(tx, db.dataAndCaching), nil
 }
 
 // NamedPrepareContext creates a prepared statement for later queries or executions.

@@ -26,6 +26,11 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
+// note(jae): 2022-10-22
+// Allow me to test things locally by just copy pasting this into the command-line
+//
+// SQLX_POSTGRES_DSN=postgres://postgres:password@localhost:5432/postgres?sslmode=disable go test -timeout 30s -run ^TestUsage$ github.com/silbinarywolf/sqlsw/sqlx
+
 /* compile time checks that Db, Tx, Stmt (qStmt) implement expected interfaces */
 
 // TODO(jae): 2022-10-22

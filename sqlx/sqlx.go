@@ -12,8 +12,7 @@ import (
 )
 
 type DB struct {
-	db         sqlsw.DB
-	driverName string
+	db sqlsw.DB
 	metadataInfo
 }
 
@@ -120,10 +119,6 @@ func (db *DB) Unsafe() *DB {
 	return newDB
 }
 
-func (db *DB) isUnsafe() bool {
-	return db.unsafe
-}
-
 // Rebind a query within a transaction's bindvar type.
 func (db *DB) Rebind(query string) string {
 	panic("TODO(jae): 2022-10-22: Implement Rebind")
@@ -195,19 +190,20 @@ func (db *DB) MustBeginTx(ctx context.Context, opts *sql.TxOptions) *Tx {
 	return tx
 }
 
+func newTx(tx sqlsw.Tx, metadata metadataInfo) *Tx {
+	t := &Tx{}
+	t.underlying = tx
+	t.metadataInfo = metadata
+	return t
+}
+
 // Beginx begins a transaction and returns an *sqlx.Tx instead of an *sql.Tx.
 func (db *DB) Beginx() (*Tx, error) {
-	panic("TODO(jae): 2022-10-22: Implement db.Beginx")
-	/* tx, err := db.db.Begin()
+	tx, err := db.db.Begin()
 	if err != nil {
 		return nil, err
 	}
-	return &Tx{
-		underlying: tx,
-		driverName: db.driverName,
-		unsafe:     db.unsafe,
-		//Mapper: db.Mapper
-	}, err */
+	return newTx(*tx, db.metadataInfo), nil
 }
 
 // BeginTxx begins a transaction and returns an *sqlx.Tx instead of an
@@ -424,6 +420,8 @@ func (stmt *NamedStmt) Close() error {
 }
 
 type metadataInfo struct {
+	// driverName is the driver being used
+	driverName string
 	// unsafe is true when unknown fields are allowed
 	unsafe bool
 	// note(jae): 2022-10-22
@@ -599,12 +597,7 @@ func GetContext(ctx context.Context, q QueryerContext, dest interface{}, query s
 // Tx is an in-progress database transaction.
 type Tx struct {
 	underlying sqlsw.Tx
-	// unsafe is true when unknown fields are allowed
-	unsafe bool
-}
-
-func (tx *Tx) isUnsafe() bool {
-	return tx.unsafe
+	metadataInfo
 }
 
 // StmtContext returns a transaction-specific prepared statement from
