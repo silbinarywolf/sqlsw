@@ -42,7 +42,10 @@ func Open(driverName, dataSourceName string) (*DB, error) {
 }
 
 // DB returns the underlying "database/sql" handle
-func (db *DB) DB() *sql.DB { return db.db }
+//
+// todo(jae): 2022-10-22
+// Decide if we need to expose this.
+// func (db *DB) DB() *sql.DB { return db.db }
 
 // dataAndCaching is extra information stored on db and passed around statements and transactions
 type dataAndCaching struct {
@@ -72,13 +75,6 @@ type Rows struct {
 
 type cachingObject interface {
 	getCachingData() caching
-}
-
-// SQLX_NewRows creates a Rows struct
-//
-// Deprecated: This function only exists so the sqlx compatbility layer can create Rows objects
-func SQLX_NewRows(rows *sql.Rows, cachingData cachingObject) *Rows {
-	return newRows(rows, cachingData.getCachingData())
 }
 
 func newRows(rows *sql.Rows, cachingData caching) *Rows {

@@ -79,7 +79,7 @@ func (db *DB) DriverName() string {
 // QueryContext executes a query that returns rows, typically a SELECT.
 // The args are for any placeholder parameters in the query.
 func (db *DB) QueryContext(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error) {
-	return db.db.DB().QueryContext(ctx, query, args...)
+	return sqlsw.SQLX_DB(&db.db).QueryContext(ctx, query, args...)
 }
 
 // QueryRowxContext queries the database and returns an *sqlx.Row.
@@ -156,6 +156,12 @@ func (db *DB) BeginTxx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) {
 		unsafe:     db.db,
 		//Mapper: db.Mapper
 	}, err */
+}
+
+// Exec executes a named statement using the struct passed.
+// Any named placeholder parameters are replaced with fields from arg.
+func (db *DB) Exec(query string, args ...interface{}) (sql.Result, error) {
+	return sqlsw.SQLX_DB(&db.db).Exec(query, args...)
 }
 
 // QueryxContext queries the database and returns an *sqlx.Rows.
@@ -235,6 +241,22 @@ func (rows *Rows) Next() bool {
 	return rows.rows.Next()
 }
 
+func (rows *Rows) Err() error {
+	// todo(jae): 2022-10-22
+	// Probably expose this in sqlsw.Rows?
+	return sqlsw.SQLX_Rows(&rows.rows).Err()
+}
+
+func (rows *Rows) Columns() ([]string, error) {
+	// todo(jae): 2022-10-22
+	// Probably expose this in sqlsw.Rows?
+	return sqlsw.SQLX_Rows(&rows.rows).Columns()
+}
+
+func (rows *Rows) Scan(dest ...interface{}) error {
+	return sqlsw.SQLX_Rows(&rows.rows).Scan(dest...)
+}
+
 func (rows *Rows) Close() error {
 	return rows.rows.Close()
 }
@@ -276,6 +298,16 @@ func (tx *Tx) Rollback() error {
 	return tx.underlying.Rollback()
 }
 
+// MustExec executes a query that doesn't return rows.
+// For example: an INSERT and UPDATE.
+func (tx *Tx) MustExec(query string, args ...interface{}) sql.Result {
+	sqlResult, err := sqlsw.SQLX_Tx(&tx.underlying).Exec(query, args...)
+	if err != nil {
+		panic(err)
+	}
+	return sqlResult
+}
+
 // Rebind a query within a transaction's bindvar type.
 func (tx *Tx) Rebind(query string) string {
 	panic("TODO(jae): 2022-10-22: Implement tx.Rebind")
@@ -291,4 +323,30 @@ func (tx *Tx) NamedStmtContext(ctx context.Context, stmt *NamedStmt) *NamedStmt 
 		Params:      stmt.Params,
 		Stmt:        tx.StmtxContext(ctx, stmt.Stmt),
 	} */
+}
+
+type rowsi interface {
+	Close() error
+	Columns() ([]string, error)
+	Err() error
+	Next() bool
+	Scan(...interface{}) error
+}
+
+func StructScan(rows rowsi, ptrValue interface{}) error {
+	panic("TODO(jae): 2022-10-22: handle StructScan")
+	switch rows := rows.(type) {
+	case *Rows:
+		return rows.StructScan(ptrValue)
+	case *sql.Rows:
+		/* rowsUnderlying := sqlsw.SQLX_NewRows(rows, &db.db)
+		rows := &Rows{
+			rows: *rowsUnderlying,
+			// note(jae): 2022-10-22
+			// Not supporting Mapper, at least at time of writing
+			// Mapper: db.Mapper
+		}
+		return rows.StructScan(ptrValue) */
+	}
+	return nil, errors.New("unable to execute StructScan, must be sqlx rows")
 }
