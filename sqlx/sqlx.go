@@ -286,10 +286,14 @@ func (n *NamedStmt) SelectContext(ctx context.Context, dest interface{}, structO
 // ExecContext executes a named statement using the struct passed.
 // Any named placeholder parameters are replaced with fields from arg.
 func (n *NamedStmt) ExecContext(ctx context.Context, structOrMapArg interface{}) (sql.Result, error) {
-	return *new(sql.Result), errors.New("TODO(jae): 2022-10-22: Implement ExecContext")
+	return nil, errors.New("TODO(jae): 2022-10-22: Implement ExecContext")
 	/* args, err := bindAnyArgs(n.Params, structOrMapArg, n.Stmt.Mapper)
 	if err != nil {
-		return *new(sql.Result), err
+		return nil, err
+		// note(jae): 2022-10-22
+		// SQLX returns *new(sql.Result) but thats then returning
+		// a newed interface. Probably shouldn't do that.
+		// return *new(sql.Result), err
 	}
 	return n.namedStmt.Stmt().ExecContext(ctx, args...) */
 }
