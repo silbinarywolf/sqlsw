@@ -52,3 +52,35 @@ func NamedQueryContextWithScanStruct(t testOrBench, db *sqlsw.DB) {
 		t.Fatal("ID should not be zero")
 	}
 }
+
+func NamedQueryContextWithScanSliceValue(t testOrBench, db *sqlsw.DB) {
+	queryRecord := selectQueryStruct{}
+	queryRecord.ID = 1
+	query := `select "ID" from "Operation"`
+	rows, err := db.NamedQueryContext(context.Background(), query, queryRecord)
+	if err != nil {
+		t.Fatalf("query failed: %s, error: %s", query, err)
+	}
+	defer rows.Close()
+	var sliceOfRecords []selectQueryStruct
+	if err := rows.ScanSlice(&sliceOfRecords); err != nil {
+		t.Fatal(err)
+	}
+	t.Fatalf("%v", sliceOfRecords)
+}
+
+func NamedQueryContextWithScanSlicePtr(t testOrBench, db *sqlsw.DB) {
+	queryRecord := selectQueryStruct{}
+	queryRecord.ID = 1
+	query := `select "ID" from "Operation"`
+	rows, err := db.NamedQueryContext(context.Background(), query, queryRecord)
+	if err != nil {
+		t.Fatalf("query failed: %s, error: %s", query, err)
+	}
+	defer rows.Close()
+	var sliceOfRecords []*selectQueryStruct
+	if err := rows.ScanSlice(&sliceOfRecords); err != nil {
+		t.Fatal(err)
+	}
+	t.Fatalf("%+v", sliceOfRecords[1])
+}

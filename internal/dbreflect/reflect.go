@@ -6,6 +6,23 @@ type Value struct {
 	value reflect.Value
 }
 
+func (v *Value) UnderlyingValue() reflect.Value {
+	return v.value
+}
+
+func (v *Value) Interface() interface{} {
+	return v.value.Interface()
+}
+
+// Indirect returns the value that v points to.
+// If v is a nil pointer, Indirect returns a zero Value.
+// If v is not a pointer, Indirect returns v.
+func Indirect(value Value) Value {
+	v := Value{}
+	v.value = reflect.Indirect(value.value)
+	return v
+}
+
 // ValueOf returns a new Value initialized to the concrete value
 // stored in the interface i. ValueOf(nil) returns the zero Value.
 //
@@ -26,6 +43,30 @@ func TypeOf(value interface{}) Type {
 	v := Type{}
 	v.typ = reflect.TypeOf(value)
 	return v
+}
+
+// PtrTo returns the pointer type with element t.
+// For example, if t represents type Foo, PtrTo(t) represents *Foo.
+//
+// PtrTo is the old spelling of PointerTo.
+// The two functions behave identically.
+func PtrTo(typ Type) Type {
+	v := Type{}
+	v.typ = reflect.PtrTo(typ.typ)
+	return v
+}
+
+// New returns a Value representing a pointer to a new zero value
+// for the specified type. That is, the returned Value's Type is PointerTo(typ).
+func New(typ Type) Value {
+	v := Value{}
+	v.value = reflect.New(typ.typ)
+	return v
+}
+
+// Implements reports whether the type implements the interface type u.
+func (typ Type) Implements(otherTyp Type) bool {
+	return typ.typ.Implements(otherTyp.typ)
 }
 
 func (typ Type) Kind() reflect.Kind {

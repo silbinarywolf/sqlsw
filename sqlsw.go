@@ -12,6 +12,8 @@ import (
 	"github.com/silbinarywolf/sqlsw/internal/sqlparser"
 )
 
+var _scannerInterface = dbreflect.TypeOf((*sql.Scanner)(nil)).Elem()
+
 type DB struct {
 	db *sql.DB
 	dataAndCaching
@@ -357,6 +359,93 @@ func (stmt *NamedStmt) NamedQueryRowContext(ctx context.Context, structOrMapOrSl
 		return &Row{err: err}
 	}
 	return &Row{rows: *rows}
+}
+
+// ScanSlice copies the columns in the current row into the given struct.
+func (rows *Rows) ScanSlice(ptrToSlice interface{}) error {
+	refType := dbreflect.TypeOf(ptrToSlice)
+	if refType.Kind() != reflect.Ptr {
+		return errors.New("ScanSlice: must pass a pointer, not a value")
+	}
+	refType = refType.Elem()
+	if kind := refType.Kind(); kind != reflect.Slice {
+		return errors.New("ScanSlice: must pass a pointer to slice, not pointer to " + kind.String())
+	}
+	isPtr := false
+	sliceElem := refType.Elem()
+	if sliceElem.Kind() == reflect.Ptr {
+		sliceElem = sliceElem.Elem()
+		isPtr = true
+	}
+	direct := reflect.Indirect(reflect.ValueOf(ptrToSlice))
+	direct.SetLen(0)
+
+	// note(jae): 2022-10-23
+	// isScannable checks if a type implements `Scan(src interface{}) error` and
+	// if it's not a struct
+	isScannable := dbreflect.PtrTo(sliceElem).Implements(_scannerInterface) ||
+		sliceElem.Kind() != reflect.Struct
+	if !isScannable {
+		columnNames, err := rows.rows.Columns()
+		if err != nil {
+			return err
+		}
+		structData, err := rows.reflector.GetStruct(sliceElem)
+		if err != nil {
+			return err
+		}
+		var (
+			values []interface{}
+			// temporary array used on stack
+			valuesUnderlying [16]interface{}
+			// skippedFieldValue is used to hold skipped values
+			skippedFieldValue interface{}
+		)
+		if len(columnNames) >= len(valuesUnderlying) {
+			values = valuesUnderlying[:len(columnNames)]
+		} else {
+			values = make([]interface{}, len(columnNames))
+		}
+		for rows.Next() {
+			vp := dbreflect.New(sliceElem)
+			// Fill struct with values
+			{
+				for i, columnName := range columnNames {
+					field, ok := structData.GetFieldByName(columnName)
+					if !ok {
+						values[i] = &skippedFieldValue
+						continue
+					}
+					values[i] = field.Addr(vp)
+				}
+				if err := rows.rows.Scan(values...); err != nil {
+					return err
+				}
+			}
+			if isPtr {
+				direct.Set(reflect.Append(direct, vp.UnderlyingValue()))
+			} else {
+				v := dbreflect.Indirect(vp)
+				direct.Set(reflect.Append(direct, v.UnderlyingValue()))
+			}
+		}
+	} else {
+		// note(jae): 2022-10-23
+		// Handles cases such as:
+		// - []int32, []int64
+		for rows.Next() {
+			vp := dbreflect.New(sliceElem)
+			if err := rows.rows.Scan(vp.Interface()); err != nil {
+				return err
+			}
+			if isPtr {
+				direct.Set(reflect.Append(direct, vp.UnderlyingValue()))
+			} else {
+				direct.Set(reflect.Append(direct, reflect.Indirect(vp.UnderlyingValue())))
+			}
+		}
+	}
+	return rows.Err()
 }
 
 // ScanStruct copies the columns in the current row into the given struct.

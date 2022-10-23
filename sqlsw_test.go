@@ -1,17 +1,5 @@
 package sqlsw
 
-import (
-	"github.com/silbinarywolf/sqlsw/internal/bindtype"
-	"github.com/silbinarywolf/sqlsw/internal/dbreflect"
-)
-
-func newDB() *DB {
-	db := &DB{}
-	db.bindType = bindtype.Question
-	db.reflector = &dbreflect.ReflectModule{}
-	return db
-}
-
 // todo(jae): 2022-10-16
 // test transform to list of parameters
 /* func TestAFjak(t *testing.T) {

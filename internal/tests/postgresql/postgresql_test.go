@@ -43,6 +43,14 @@ func newDB() (*sqlsw.DB, error) {
 	return db, nil
 }
 
-func TestRunAllCommonTests(t *testing.T) {
-	testsuite.TestRunAll(t, db)
+func TestNamedQueryContextWithScanStruct(t *testing.T) {
+	testsuite.NamedQueryContextWithScanStruct(t, db)
+}
+
+func TestNamedQueryContextWithScanSliceValue(t *testing.T) {
+	testsuite.NamedQueryContextWithScanSliceValue(t, db)
+}
+
+func TestNamedQueryContextWithScanSlicePtr(t *testing.T) {
+	testsuite.NamedQueryContextWithScanSlicePtr(t, db)
 }
