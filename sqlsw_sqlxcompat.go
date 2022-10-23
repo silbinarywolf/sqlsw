@@ -4,6 +4,7 @@ import (
 	"database/sql"
 
 	"github.com/silbinarywolf/sqlsw/internal/bindtype"
+	"github.com/silbinarywolf/sqlsw/internal/dbreflect"
 )
 
 // --------
@@ -17,7 +18,13 @@ import (
 // Deprecated: This may be changed or removed in the future. Do not use.
 func SQLX_CompatNewDB(db *sql.DB, driverName string) (*DB, error) {
 	dbWrapper, err := newDB(db, driverName)
-	return dbWrapper, err
+	if err != nil {
+		return nil, err
+	}
+	dbWrapper.reflector = dbreflect.NewReflectModule(dbreflect.Options{
+		LowercaseFieldNameWithNoTag: true,
+	})
+	return dbWrapper, nil
 }
 
 // SQLX_GetBindType exists to support NewDb in the sqlx backwards compatibility driver.

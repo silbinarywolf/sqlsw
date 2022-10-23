@@ -4,11 +4,23 @@ package dbreflect
 import (
 	"bytes"
 	"reflect"
+	"strings"
 	"sync"
 )
 
 type ReflectModule struct {
 	cachedStructs sync.Map
+	options       Options
+}
+
+func NewReflectModule(options Options) *ReflectModule {
+	m := &ReflectModule{}
+	m.options = options
+	return m
+}
+
+type Options struct {
+	LowercaseFieldNameWithNoTag bool
 }
 
 type ReflectProcessor struct {
@@ -16,6 +28,8 @@ type ReflectProcessor struct {
 	// indexes represents the current field index depth
 	indexes []int
 	errors  []error
+	// Options are the config options
+	Options
 }
 
 type StructField struct {
@@ -93,7 +107,7 @@ func (m *ReflectModule) GetStruct(typeEl Type) (*Struct, error) {
 	if ok {
 		return unassertedStructInfo.(*Struct), nil
 	}
-	structInfo, err := getStruct(typeEl)
+	structInfo, err := getStruct(typeEl, m.options)
 	if err != nil {
 		return nil, err
 	}
@@ -101,9 +115,10 @@ func (m *ReflectModule) GetStruct(typeEl Type) (*Struct, error) {
 	return &structInfo, nil
 }
 
-func getStruct(typeEl Type) (Struct, error) {
+func getStruct(typeEl Type, options Options) (Struct, error) {
 	var indexesUnderlying [8]int
 	p := ReflectProcessor{}
+	p.Options = options
 	p.indexes = indexesUnderlying[:0]
 	p.processFields(typeEl)
 	if len(p.errors) > 0 {
@@ -136,9 +151,9 @@ func (p *ReflectProcessor) processFields(typeEl Type) {
 				continue
 			}
 		}
-		// note(jae): 2022-10-15
-		// This check must happen *after* the "Anonymous" check so
-		// that embedding unexported structs within a struct still works
+		// note(jae): 2022-10-23
+		// I forgot why we don't do this check anymore but if we uncomment
+		// this, something breaks.
 		// if !structField.CanSet() {
 		// 	continue
 		// }
@@ -147,41 +162,53 @@ func (p *ReflectProcessor) processFields(typeEl Type) {
 		// sqlx does not skip if there is no tag, we need to add compatibility
 		// for that here in the compat layer.
 		fullTagInfo, ok := structFieldType.Tag().Lookup("db")
+		var dbFieldName string
 		if !ok {
-			// skip if there is no tag on field
-			continue
-		}
-		if fullTagInfo == "-" {
-			// skip if tag value is "-"
-			// ie. `db:"-"`
-			continue
-		}
-		// Get tag name
-		tagName := fullTagInfo
-	TagLoop:
-		for pos := 0; pos < len(fullTagInfo); {
-			c := fullTagInfo[pos]
-			switch c {
-			case ',':
-				tagName = fullTagInfo[0:pos]
-			case ':':
-				// If unexpected tag value, ignore
-				//
-				// note(jae): 2022-10-15
-				// This behaviour is retained from sqlx
-				tagName = ""
-				break TagLoop
+			if !p.LowercaseFieldNameWithNoTag {
+				// Skip field if there is no tag
+				continue
 			}
-			pos += 1
+			// note(jae): 2022-10-23
+			// SQLX Default mapper backwards compatibility
+			dbFieldName = strings.ToLower(structFieldType.field.Name)
+		} else {
+			if fullTagInfo == "-" {
+				// skip if tag value is "-"
+				// ie. `db:"-"`
+				continue
+			}
+			// Get tag name
+			dbFieldName = fullTagInfo
+		TagLoop:
+			for pos := 0; pos < len(fullTagInfo); {
+				c := fullTagInfo[pos]
+				switch c {
+				case ',':
+					dbFieldName = fullTagInfo[0:pos]
+				case ':':
+					// If unexpected tag value, ignore
+					//
+					// note(jae): 2022-10-15
+					// This behaviour is retained from sqlx
+					dbFieldName = ""
+					break TagLoop
+				}
+				pos += 1
+			}
 		}
-		if tagName == "" {
+		if dbFieldName == "" {
 			continue
 		}
 		field := StructField{}
-		field.tagName = tagName
+		field.tagName = dbFieldName
 		field.indexes = field.indexesUnderlying[:0]
 		field.indexes = append(field.indexes, p.indexes...)
 		field.indexes = append(field.indexes, i)
 		p.fields = append(p.fields, field)
 	}
+}
+
+// ResetCache is used by benchmarking tests
+func (m *ReflectModule) ResetCache() {
+	m.cachedStructs = sync.Map{}
 }

@@ -928,13 +928,16 @@ func TestUsage(t *testing.T) {
 	RunWithSchema(defaultSchema, t, func(db *DB, t *testing.T, now string) {
 		loadDefaultFixture(db, t)
 		slicemembers := []SliceMember{}
-		err := db.Select(&slicemembers, "SELECT * FROM place ORDER BY telcode ASC")
-		if err != nil {
-			t.Fatal(err)
+		{
+			query := "SELECT * FROM place ORDER BY telcode ASC"
+			err := db.Select(&slicemembers, "SELECT * FROM place ORDER BY telcode ASC")
+			if err != nil {
+				t.Fatalf("unable to query: %s, error: %s", query, err)
+			}
 		}
-
 		people := []Person{}
 
+		var err error
 		err = db.Select(&people, "SELECT * FROM person ORDER BY first_name ASC")
 		if err != nil {
 			t.Fatal(err)

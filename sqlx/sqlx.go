@@ -36,13 +36,17 @@ func NewDb(db *sql.DB, driverName string) *DB {
 }
 
 func Open(driverName, dataSourceName string) (*DB, error) {
-	dbDriver, err := sqlsw.Open(driverName, dataSourceName)
+	dbDriver, err := sql.Open(driverName, dataSourceName)
+	if err != nil {
+		return nil, err
+	}
+	dbSw, err := sqlsw.SQLX_CompatNewDB(dbDriver, driverName)
 	if err != nil {
 		return nil, err
 	}
 	db := &DB{}
 	db.driverName = driverName
-	db.db = *dbDriver
+	db.db = *dbSw
 	db.bindType = int(sqlsw.SQLX_GetBindType(&db.db))
 	return db, err
 }
@@ -333,8 +337,16 @@ func (db *DB) Preparex(query string) (*Stmt, error) {
 // SelectContext using this DB.
 // Any placeholder parameters are replaced with supplied args.
 func (db *DB) SelectContext(ctx context.Context, dest interface{}, query string, args ...interface{}) error {
-	panic("TODO(jae): 2022-10-22: Implement db.SelectContext")
-	//return SelectContext(ctx, db, dest, query, args...)
+	sqlRows, err := db.QueryContext(context.Background(), query, args...)
+	if err != nil {
+		return err
+	}
+	rows := sqlsw.SQLX_NewRows(sqlRows, &db.db)
+	defer rows.Close()
+	if err := rows.ScanSlice(dest); err != nil {
+		return err
+	}
+	return rows.Err()
 }
 
 // Select using this DB.
@@ -347,8 +359,27 @@ func (db *DB) Select(dest interface{}, query string, args ...interface{}) error 
 // Any placeholder parameters are replaced with supplied args.
 // An error is returned if the result set is empty.
 func (db *DB) GetContext(ctx context.Context, dest interface{}, query string, args ...interface{}) error {
-	panic("TODO(Jae): 2022-10-22: Support db.GetContext")
-	// return GetContext(ctx, db, dest, query, args...)
+	sqlRows, err := db.QueryContext(context.Background(), query, args...)
+	if err != nil {
+		return err
+	}
+	rows := sqlsw.SQLX_NewRows(sqlRows, &db.db)
+	defer rows.Close()
+	if !rows.Next() {
+		err = rows.Err()
+		if err != nil {
+			return err
+		}
+		return sql.ErrNoRows
+	}
+	// todo(jae): 2022-10-23
+	// GetContext needs to support:
+	// - Scannable like sqlx
+	// - Possibly support map[string]interface{}
+	if err := rows.ScanStruct(dest); err != nil {
+		return err
+	}
+	return rows.Err()
 }
 
 // Get using this DB.

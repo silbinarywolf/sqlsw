@@ -27,7 +27,7 @@ func newDB(dbDriver *sql.DB, driverName string) (*DB, error) {
 	db := &DB{}
 	db.db = dbDriver
 	db.bindType = bindType
-	db.reflector = &dbreflect.ReflectModule{}
+	db.reflector = dbreflect.NewReflectModule(dbreflect.Options{})
 	return db, nil
 }
 
@@ -413,8 +413,14 @@ func (rows *Rows) ScanSlice(ptrToSlice interface{}) error {
 				for i, columnName := range columnNames {
 					field, ok := structData.GetFieldByName(columnName)
 					if !ok {
-						values[i] = &skippedFieldValue
-						continue
+						// todo(jae): 2022-10-23
+						// add support for skipping fields
+						const skipUnknownFields = false
+						if skipUnknownFields {
+							values[i] = &skippedFieldValue
+							continue
+						}
+						return fmt.Errorf(`missing column name "%s" in %T`, columnName, ptrToSlice)
 					}
 					values[i] = field.Addr(vp)
 				}
@@ -432,7 +438,7 @@ func (rows *Rows) ScanSlice(ptrToSlice interface{}) error {
 	} else {
 		// note(jae): 2022-10-23
 		// Handles cases such as:
-		// - []int32, []int64
+		// - []int32, []int64, time.Time
 		for rows.Next() {
 			vp := dbreflect.New(sliceElem)
 			if err := rows.rows.Scan(vp.Interface()); err != nil {
@@ -703,5 +709,5 @@ type testOrBench interface {
 //
 // This should be used for testing and benchmarking purposes only.
 func TestOnlyResetCache(t testOrBench, db *DB) {
-	db.reflector = &dbreflect.ReflectModule{}
+	db.reflector.ResetCache()
 }
