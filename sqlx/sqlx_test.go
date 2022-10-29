@@ -232,6 +232,8 @@ func MultiExec(e Execer, query string) {
 
 func RunWithSchema(schema Schema, t *testing.T, test func(db *DB, t *testing.T, now string)) {
 	runner := func(db *DB, t *testing.T, create, drop, now string) {
+		// note(jae): 2022-10-29
+		// keep tables for debugging
 		defer func() {
 			MultiExec(db, drop)
 		}()
@@ -525,6 +527,7 @@ func TestJoinQuery(t *testing.T) {
 			Boss `db:"boss"`
 		}
 
+		// Columns() = name id boss_id boss.id boss.name
 		err := db.Select(
 			&employees,
 			`SELECT employees.*, boss.id "boss.id", boss.name "boss.name" FROM employees

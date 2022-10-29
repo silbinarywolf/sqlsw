@@ -442,9 +442,10 @@ func (rows *Rows) ScanSlice(ptrToSlice interface{}) error {
 							values[i] = &skippedFieldValue
 							continue
 						}
-						return fmt.Errorf(`missing column name "%s" in %T`, columnName, ptrToSlice)
+						// panic(fmt.Sprintf("%v", structData.DebugFieldNames()))
+						return newMissingColumnNameError(columnName, ptrToSlice)
 					}
-					values[i] = field.Addr(vp)
+					values[i] = field.AddrWithNew(vp)
 				}
 				if err := rows.rows.Scan(values...); err != nil {
 					return err
@@ -516,9 +517,9 @@ func (rows *Rows) ScanStruct(ptrValue interface{}) error {
 					values[i] = &skippedFieldValue
 					continue
 				}
-				return fmt.Errorf(`missing column name "%s" in %T`, columnName, ptrValue)
+				return newMissingColumnNameError(columnName, ptrValue)
 			}
-			values[i] = field.Addr(reflectArgs)
+			values[i] = field.AddrWithNew(reflectArgs)
 		}
 	}
 	err = rows.rows.Scan(values...)
@@ -735,4 +736,8 @@ type testOrBench interface {
 // This should be used for testing and benchmarking purposes only.
 func TestOnlyResetCache(t testOrBench, db *DB) {
 	db.reflector.ResetCache()
+}
+
+func newMissingColumnNameError(columnName string, value interface{}) error {
+	return fmt.Errorf(`missing column name "%s" in %T`, columnName, value)
 }

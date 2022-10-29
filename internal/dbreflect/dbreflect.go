@@ -3,10 +3,13 @@ package dbreflect
 
 import (
 	"bytes"
+	"database/sql"
 	"reflect"
 	"strings"
 	"sync"
 )
+
+var _scannerInterface = TypeOf((*sql.Scanner)(nil)).Elem()
 
 type ReflectModule struct {
 	cachedStructs sync.Map
@@ -25,6 +28,9 @@ type Options struct {
 
 type ReflectProcessor struct {
 	fields []StructField
+	// dbFieldNames holds depth of struct names
+	// ie. struct { MyField OtherStruct `db:"otherStruct"` } = ["otherStruct"]
+	dbFieldNames []string
 	// indexes represents the current field index depth
 	indexes []int
 	errors  []error
@@ -55,6 +61,16 @@ func (struc *Struct) GetFieldByName(fieldName string) (*StructField, bool) {
 	return nil, false
 }
 
+// DebugFieldNames will return all field names on the struct
+func (struc *Struct) DebugFieldNames() []string {
+	r := make([]string, 0, len(struc.fields))
+	for i := range struc.fields {
+		field := &struc.fields[i]
+		r = append(r, field.tagName)
+	}
+	return r
+}
+
 // Interface returns the struct field value using the provided struct
 func (field *StructField) Interface(structAsReflectValue Value) interface{} {
 	v := structAsReflectValue.value
@@ -64,11 +80,24 @@ func (field *StructField) Interface(structAsReflectValue Value) interface{} {
 	return v.Interface()
 }
 
-// Addr returns the address of the struct field
-func (field *StructField) Addr(structAsReflectValue Value) interface{} {
+// AddrWithNew returns the address of the struct field
+//
+// If it's nil pointer or map, it will allocate a new one within the struct
+func (field *StructField) AddrWithNew(structAsReflectValue Value) interface{} {
 	v := structAsReflectValue.value
 	for _, i := range field.indexes {
 		v = reflect.Indirect(v).Field(i)
+		switch v.Kind() {
+		case reflect.Pointer:
+			if v.IsNil() {
+				v.Set(reflect.New(v.Type().Elem()))
+			}
+		case reflect.Map:
+			panic("todo(jae): Test this proper")
+			/* if v.IsNil() {
+				v.Set(reflect.MakeMap(v.Type().Elem()))
+			} */
+		}
 	}
 	return v.Addr().Interface()
 }
@@ -135,34 +164,13 @@ func (p *ReflectProcessor) processFields(typeEl Type) {
 		// note(jae): 2022-10-15
 		// getting reflect.StructField causes 1-alloc
 		structFieldType := typeEl.Field(i)
-		if structFieldType.Anonymous() {
-			fieldType := structFieldType.Type()
-			fieldTypeKind := fieldType.Kind()
-			if fieldTypeKind == reflect.Struct {
-				p.indexes = append(p.indexes, i)
-				p.processFields(fieldType)
-				p.indexes = p.indexes[:len(p.indexes)-1]
-				continue
-			}
-			if fieldTypeKind == reflect.Ptr && fieldType.Elem().Kind() == reflect.Struct {
-				p.indexes = append(p.indexes, i)
-				p.processFields(fieldType.Elem())
-				p.indexes = p.indexes[:len(p.indexes)-1]
-				continue
-			}
-		}
-		// note(jae): 2022-10-23
-		// I forgot why we don't do this check anymore but if we uncomment
-		// this, something breaks.
-		// if !structField.CanSet() {
-		// 	continue
-		// }
 
-		// todo(jae): 2022-10-16
-		// sqlx does not skip if there is no tag, we need to add compatibility
-		// for that here in the compat layer.
+		// Determine database field name by:
+		// - Getting it from `db:""` tag
+		// - Fallback to using the struct field name and auto-lowercasing (SQLX compatibility)
 		fullTagInfo, ok := structFieldType.Tag().Lookup("db")
 		var dbFieldName string
+		hasTagName := false
 		if !ok {
 			if !p.LowercaseFieldNameWithNoTag {
 				// Skip field if there is no tag
@@ -179,6 +187,7 @@ func (p *ReflectProcessor) processFields(typeEl Type) {
 			}
 			// Get tag name
 			dbFieldName = fullTagInfo
+			hasTagName = true
 		TagLoop:
 			for pos := 0; pos < len(fullTagInfo); {
 				c := fullTagInfo[pos]
@@ -199,8 +208,106 @@ func (p *ReflectProcessor) processFields(typeEl Type) {
 		if dbFieldName == "" {
 			continue
 		}
+
+		// Process structs
+		{
+			if structFieldType.Anonymous() {
+				fieldType := structFieldType.Type()
+				fieldTypeKind := fieldType.Kind()
+				if fieldTypeKind == reflect.Struct {
+					// note(jae): 2022-10-29
+					// Only append field name information to the depth for embedded
+					// structs if there's an explicit tag on it.
+					//
+					// This handles SQLX backwards compatibility, see "TestJoinQuery" in sqlx_test.go
+					if hasTagName {
+						p.dbFieldNames = append(p.dbFieldNames, dbFieldName)
+					}
+					p.indexes = append(p.indexes, i)
+					p.processFields(fieldType)
+					if hasTagName {
+						p.dbFieldNames = p.dbFieldNames[:len(p.dbFieldNames)-1]
+					}
+					p.indexes = p.indexes[:len(p.indexes)-1]
+
+					// Skip to next field
+					continue
+				}
+				if fieldTypeKind == reflect.Ptr && fieldType.Elem().Kind() == reflect.Struct {
+					// note(jae): 2022-10-29
+					// Only append field name information to the depth for embedded
+					// structs if there's an explicit tag on it.
+					//
+					// This handles SQLX backwards compatibility, see "TestJoinQuery" in sqlx_test.go
+					if hasTagName {
+						p.dbFieldNames = append(p.dbFieldNames, dbFieldName)
+					}
+					p.indexes = append(p.indexes, i)
+					p.processFields(fieldType.Elem())
+					if hasTagName {
+						p.dbFieldNames = p.dbFieldNames[:len(p.dbFieldNames)-1]
+					}
+					p.indexes = p.indexes[:len(p.indexes)-1]
+
+					// Skip to next field
+					continue
+				}
+			}
+			fieldType := structFieldType.Type()
+			fieldTypeKind := fieldType.Kind()
+			if fieldTypeKind == reflect.Struct {
+				// note(jae): 2022-10-29
+				// Avoid sub-processing of structs that implement `Scan(any) error`.
+				// Without this, structs like sql.NullInt64 won't work as expected.
+				if isScannable := PtrTo(fieldType).Implements(_scannerInterface); !isScannable {
+					// Push to stack
+					p.dbFieldNames = append(p.dbFieldNames, dbFieldName)
+					p.indexes = append(p.indexes, i)
+
+					// Process the structs fields
+					p.processFields(fieldType)
+
+					// Pop from stack
+					p.dbFieldNames = p.dbFieldNames[:len(p.dbFieldNames)-1]
+					p.indexes = p.indexes[:len(p.indexes)-1]
+
+					// Skip to next field
+					continue
+				}
+			}
+			if fieldTypeKind == reflect.Ptr && fieldType.Elem().Kind() == reflect.Struct {
+				// note(jae): 2022-10-29
+				// Avoid sub-processing of structs that implement `Scan(any) error`.
+				// Without this, structs like sql.NullInt64 won't work as expected.
+				if isScannable := fieldType.Implements(_scannerInterface); !isScannable {
+					// Push to stack
+					p.dbFieldNames = append(p.dbFieldNames, dbFieldName)
+					p.indexes = append(p.indexes, i)
+
+					// Process the structs fields
+					p.processFields(fieldType.Elem())
+
+					// Pop from stack
+					p.dbFieldNames = p.dbFieldNames[:len(p.dbFieldNames)-1]
+					p.indexes = p.indexes[:len(p.indexes)-1]
+
+					// Skip to next field
+					continue
+				}
+			}
+		}
 		field := StructField{}
-		field.tagName = dbFieldName
+		if len(p.dbFieldNames) == 0 {
+			field.tagName = dbFieldName
+		} else {
+			// Handle case where non-embedded structs are used
+			// ie. "myStruct.id" or "myStruct.deeperStruct.id"
+			var buf bytes.Buffer
+			for _, subFieldName := range p.dbFieldNames {
+				buf.WriteString(subFieldName + ".")
+			}
+			field.tagName = buf.String() + dbFieldName
+		}
 		field.indexes = field.indexesUnderlying[:0]
 		field.indexes = append(field.indexes, p.indexes...)
 		field.indexes = append(field.indexes, i)

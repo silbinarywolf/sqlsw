@@ -93,6 +93,7 @@ type structField struct {
 	field reflect.StructField
 }
 
+// Anonymous is an embedded field
 func (structField structField) Anonymous() bool {
 	return structField.field.Anonymous
 }
@@ -105,4 +106,11 @@ func (structField structField) Type() Type {
 	v := Type{}
 	v.typ = structField.field.Type
 	return v
+}
+
+func (structField structField) PkgPath() string {
+	// PkgPath is the package path that qualifies a lower case (unexported)
+	// field name. It is empty for upper case (exported) field names.
+	// See https://golang.org/ref/spec#Uniqueness_of_identifiers
+	return structField.field.PkgPath
 }
