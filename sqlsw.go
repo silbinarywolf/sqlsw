@@ -12,8 +12,6 @@ import (
 	"github.com/silbinarywolf/sqlsw/internal/sqlparser"
 )
 
-var _scannerInterface = dbreflect.TypeOf((*sql.Scanner)(nil)).Elem()
-
 type DB struct {
 	db *sql.DB
 	dataAndCaching
@@ -422,8 +420,7 @@ func (rows *Rows) ScanSlice(ptrToSlice interface{}) error {
 	// note(jae): 2022-10-23
 	// isScannable checks if a type implements `Scan(src interface{}) error` and
 	// if it's not a struct
-	isScannable := dbreflect.PtrTo(sliceElem).Implements(_scannerInterface) ||
-		sliceElem.Kind() != reflect.Struct
+	isScannable := sliceElem.IsScannable()
 	if !isScannable {
 		columnNames, err := rows.rows.Columns()
 		if err != nil {
@@ -456,7 +453,6 @@ func (rows *Rows) ScanSlice(ptrToSlice interface{}) error {
 							values[i] = &skippedFieldValue
 							continue
 						}
-						// panic(fmt.Sprintf("%v", structData.DebugFieldNames()))
 						return newMissingColumnNameError(columnName, ptrToSlice)
 					}
 					values[i] = field.AddrWithNew(vp)

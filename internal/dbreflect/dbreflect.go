@@ -3,13 +3,10 @@ package dbreflect
 
 import (
 	"bytes"
-	"database/sql"
 	"reflect"
 	"strings"
 	"sync"
 )
-
-var _scannerInterface = TypeOf((*sql.Scanner)(nil)).Elem()
 
 type ReflectModule struct {
 	cachedStructs sync.Map
@@ -259,7 +256,7 @@ func (p *ReflectProcessor) processFields(typeEl Type) {
 				// note(jae): 2022-10-29
 				// Avoid sub-processing of structs that implement `Scan(any) error`.
 				// Without this, structs like sql.NullInt64 won't work as expected.
-				if isScannable := PtrTo(fieldType).Implements(_scannerInterface); !isScannable {
+				if isScannable := fieldType.IsScannable(); !isScannable {
 					// Push to stack
 					p.dbFieldNames = append(p.dbFieldNames, dbFieldName)
 					p.indexes = append(p.indexes, i)
@@ -279,7 +276,7 @@ func (p *ReflectProcessor) processFields(typeEl Type) {
 				// note(jae): 2022-10-29
 				// Avoid sub-processing of structs that implement `Scan(any) error`.
 				// Without this, structs like sql.NullInt64 won't work as expected.
-				if isScannable := fieldType.Implements(_scannerInterface); !isScannable {
+				if isScannable := fieldType.Elem().IsScannable(); !isScannable {
 					// Push to stack
 					p.dbFieldNames = append(p.dbFieldNames, dbFieldName)
 					p.indexes = append(p.indexes, i)

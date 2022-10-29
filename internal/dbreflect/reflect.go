@@ -1,6 +1,9 @@
 package dbreflect
 
-import "reflect"
+import (
+	"database/sql"
+	"reflect"
+)
 
 type Value struct {
 	value reflect.Value
@@ -79,6 +82,8 @@ func (typ Type) Elem() Type {
 	return v
 }
 
+// NumField returns a struct type's field count.
+// It panics if the type's Kind is not Struct.
 func (typ Type) NumField() int {
 	return typ.typ.NumField()
 }
@@ -113,4 +118,33 @@ func (structField structField) PkgPath() string {
 	// field name. It is empty for upper case (exported) field names.
 	// See https://golang.org/ref/spec#Uniqueness_of_identifiers
 	return structField.field.PkgPath
+}
+
+var _scannerInterface = reflect.TypeOf((*sql.Scanner)(nil)).Elem()
+
+func (typ Type) IsScannable() bool {
+	if reflect.PtrTo(typ.typ).Implements(_scannerInterface) {
+		return true
+	}
+	// If not a struct, then it's likely a supported primitive that
+	// can be scanned by database/sql
+	if typ.Kind() != reflect.Struct {
+		return true
+	}
+	// If struct and has no exported fields, it's scannable.
+	//
+	// note(jae): 2022-10-29
+	// This test mostly exists to ensure time.Time works, at least
+	// at time of writing.
+	{
+		hasExportedField := false
+		numFields := typ.typ.NumField()
+		for i := 0; i < numFields; i++ {
+			hasExportedField = hasExportedField || typ.typ.Field(i).IsExported()
+		}
+		if !hasExportedField {
+			return true
+		}
+	}
+	return false
 }
