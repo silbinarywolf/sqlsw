@@ -69,8 +69,28 @@ func (db *DB) PingContext(ctx context.Context) error {
 type dataAndCaching struct {
 	// bindType is whether parameters are bound with ?, $, @, :Named, etc
 	bindType bindtype.Kind
+	// options contains things like "allowUnknownFields"
+	options
 	// caching holds any structs that cache data needed for Scan
 	caching
+}
+
+type options struct {
+	// allowUnknownFields allows skipping of fields not in struct
+	allowUnknownFields bool
+}
+
+type optionsObject interface {
+	setAllowUnknownFields()
+	getOptionsData() options
+}
+
+func (opts *options) setAllowUnknownFields() {
+	opts.allowUnknownFields = true
+}
+
+func (opts *options) getOptionsData() options {
+	return *opts
 }
 
 // caching is extra information stored on db and passed around statements and transactions
@@ -87,6 +107,7 @@ func (c *caching) getCachingData() caching {
 // of the result set. Use Next to advance from row to row.
 type Rows struct {
 	rows *sql.Rows
+	options
 	// caching holds any structs that cache data needed for Scan
 	caching
 }
@@ -95,9 +116,10 @@ type cachingObject interface {
 	getCachingData() caching
 }
 
-func newRows(rows *sql.Rows, cachingData caching) *Rows {
+func newRows(rows *sql.Rows, optionsData options, cachingData caching) *Rows {
 	r := &Rows{}
 	r.rows = rows
+	r.options = optionsData
 	r.caching = cachingData
 	return r
 }
@@ -154,6 +176,7 @@ func (tx *Tx) Rollback() error {
 type NamedStmt struct {
 	underlying *sql.Stmt
 	parameters []string
+	options
 	// caching holds any structs that cache data needed for Scan
 	caching
 }
@@ -237,7 +260,7 @@ func (db *DB) NamedQueryContext(ctx context.Context, query string, structOrMapOr
 	if err != nil {
 		return nil, err
 	}
-	return newRows(rows, db.caching), nil
+	return newRows(rows, db.options, db.caching), nil
 }
 
 // NamedQueryContext executes a query that returns rows, typically a SELECT.
@@ -250,7 +273,7 @@ func (tx *Tx) NamedQueryContext(ctx context.Context, query string, structOrMapOr
 	if err != nil {
 		return nil, err
 	}
-	return newRows(rows, tx.caching), nil
+	return newRows(rows, tx.options, tx.caching), nil
 }
 
 // NamedQueryContext executes a query that returns rows, typically a SELECT.
@@ -263,7 +286,7 @@ func (stmt *NamedStmt) NamedQueryContext(ctx context.Context, structOrMapOrSlice
 	if err != nil {
 		return nil, err
 	}
-	return newRows(rows, stmt.caching), nil
+	return newRows(rows, stmt.options, stmt.caching), nil
 }
 
 // NamedExecContext executes a query without returning any rows.
@@ -413,10 +436,7 @@ func (rows *Rows) ScanSlice(ptrToSlice interface{}) error {
 				for i, columnName := range columnNames {
 					field, ok := structData.GetFieldByName(columnName)
 					if !ok {
-						// todo(jae): 2022-10-23
-						// add support for skipping fields
-						const skipUnknownFields = false
-						if skipUnknownFields {
+						if rows.allowUnknownFields {
 							values[i] = &skippedFieldValue
 							continue
 						}
@@ -490,8 +510,11 @@ func (rows *Rows) ScanStruct(ptrValue interface{}) error {
 		for i, columnName := range columnNames {
 			field, ok := structData.GetFieldByName(columnName)
 			if !ok {
-				values[i] = &skippedFieldValue
-				continue
+				if rows.allowUnknownFields {
+					values[i] = &skippedFieldValue
+					continue
+				}
+				return fmt.Errorf(`missing column name "%s" in %T`, columnName, ptrValue)
 			}
 			values[i] = field.Addr(reflectArgs)
 		}

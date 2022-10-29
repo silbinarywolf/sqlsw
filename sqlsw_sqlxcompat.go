@@ -5,7 +5,15 @@ import (
 
 	"github.com/silbinarywolf/sqlsw/internal/bindtype"
 	"github.com/silbinarywolf/sqlsw/internal/dbreflect"
+	"github.com/silbinarywolf/sqlsw/internal/sqlxcompat"
 )
+
+// todo(jae): 2022-10-29
+// Store all compatibility functions against empty struct
+// and update to use sqlxcompat.Use
+/* type sqlxCompat struct{}
+
+var SQLXCompat sqlxCompat */
 
 // --------
 // WARNING:
@@ -62,6 +70,24 @@ func SQLX_NamedStmt(namedStmt *NamedStmt) *sql.Stmt { return namedStmt.underlyin
 // SQLX_NewRows creates a Rows struct
 //
 // Deprecated: This may be changed or removed in the future. Do not use.
-func SQLX_NewRows(rows *sql.Rows, cachingData cachingObject) *Rows {
-	return newRows(rows, cachingData.getCachingData())
+func SQLX_NewRows(rows *sql.Rows, optionsData optionsObject, cachingData cachingObject) *Rows {
+	return newRows(rows, optionsData.getOptionsData(), cachingData.getCachingData())
+}
+
+var defaultSQLXCachingModule = caching{
+	reflector: dbreflect.NewReflectModule(dbreflect.Options{}),
+}
+
+var defaultSQLXOptions = &options{}
+
+func SQLX_DefaultOptionsObject(_ sqlxcompat.Use) optionsObject {
+	return defaultSQLXOptions
+}
+
+func SQLX_DefaultCacheObject(_ sqlxcompat.Use) cachingObject {
+	return &defaultSQLXCachingModule
+}
+
+func SQLX_Unsafe(_ sqlxcompat.Use, options optionsObject) {
+	options.setAllowUnknownFields()
 }

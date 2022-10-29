@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/silbinarywolf/sqlsw"
+	"github.com/silbinarywolf/sqlsw/internal/sqlxcompat"
 )
 
 type DB struct {
@@ -124,6 +125,7 @@ func (db *DB) Unsafe() *DB {
 	newDB := new(DB)
 	*newDB = *db
 	newDB.unsafe = true
+	sqlsw.SQLX_Unsafe(sqlxcompat.Use{}, &newDB.db)
 	return newDB
 }
 
@@ -262,7 +264,7 @@ func (db *DB) QueryxContext(ctx context.Context, query string, args ...interface
 	if err != nil {
 		return nil, err
 	}
-	rowsUnderlying := sqlsw.SQLX_NewRows(sqlRows, &db.db)
+	rowsUnderlying := sqlsw.SQLX_NewRows(sqlRows, &db.db, &db.db)
 	return newRows(*rowsUnderlying, db.metadataInfo), nil
 }
 
@@ -341,7 +343,7 @@ func (db *DB) SelectContext(ctx context.Context, dest interface{}, query string,
 	if err != nil {
 		return err
 	}
-	rows := sqlsw.SQLX_NewRows(sqlRows, &db.db)
+	rows := sqlsw.SQLX_NewRows(sqlRows, &db.db, &db.db)
 	defer rows.Close()
 	if err := rows.ScanSlice(dest); err != nil {
 		return err
@@ -363,7 +365,7 @@ func (db *DB) GetContext(ctx context.Context, dest interface{}, query string, ar
 	if err != nil {
 		return err
 	}
-	rows := sqlsw.SQLX_NewRows(sqlRows, &db.db)
+	rows := sqlsw.SQLX_NewRows(sqlRows, &db.db, &db.db)
 	defer rows.Close()
 	if !rows.Next() {
 		err = rows.Err()
@@ -407,6 +409,7 @@ func (n *NamedStmt) Unsafe() *NamedStmt {
 	newNamedStmt := new(NamedStmt)
 	*newNamedStmt = *n
 	newNamedStmt.unsafe = true
+	sqlsw.SQLX_Unsafe(sqlxcompat.Use{}, &newNamedStmt.namedStmt)
 	return newNamedStmt
 }
 
@@ -458,6 +461,7 @@ type metadataInfo struct {
 	driverName string
 	bindType   int
 	// unsafe is true when unknown fields are allowed
+	// ie. Getting fields from query that don't exist on the struct
 	unsafe bool
 	// note(jae): 2022-10-22
 	// Not supporting Mapper, at least at time of writing
@@ -525,7 +529,12 @@ func (stmt *Stmt) Queryx(query string, args ...interface{}) (*Rows, error) {
 	if err != nil {
 		return nil, err
 	}
-	return newRows(*sqlsw.SQLX_NewRows(rows, nil), stmt.metadataInfo), nil
+	rowsSw := sqlsw.SQLX_NewRows(
+		rows,
+		sqlsw.SQLX_DefaultOptionsObject(sqlxcompat.Use{}),
+		sqlsw.SQLX_DefaultCacheObject(sqlxcompat.Use{}),
+	)
+	return newRows(*rowsSw, stmt.metadataInfo), nil
 }
 
 // Rows is the result of a query. Its cursor starts before the first row
@@ -724,19 +733,22 @@ type rowsi interface {
 }
 
 func StructScan(rows rowsi, ptrValue interface{}) error {
-	panic("TODO(jae): 2022-10-22: handle StructScan")
 	switch rows := rows.(type) {
 	case *Rows:
 		return rows.StructScan(ptrValue)
 	case *sql.Rows:
-		/* rowsUnderlying := sqlsw.SQLX_NewRows(rows, &db.db)
-		rows := &Rows{
-			rows: *rowsUnderlying,
+		rowsSw := sqlsw.SQLX_NewRows(
+			rows,
+			sqlsw.SQLX_DefaultOptionsObject(sqlxcompat.Use{}),
+			sqlsw.SQLX_DefaultCacheObject(sqlxcompat.Use{}),
+		)
+		rowsX := &Rows{
+			rows: *rowsSw,
 			// note(jae): 2022-10-22
 			// Not supporting Mapper, at least at time of writing
 			// Mapper: db.Mapper
 		}
-		return rows.StructScan(ptrValue) */
+		return rowsX.StructScan(ptrValue)
 	}
 	return errors.New("unable to execute StructScan")
 }
