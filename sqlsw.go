@@ -402,6 +402,20 @@ func (rows *Rows) ScanSlice(ptrToSlice interface{}) error {
 		sliceElem = sliceElem.Elem()
 		isPtr = true
 	}
+	// Check validity
+	//
+	// note(jae): 2022-10-29
+	// This logic exists to satisfy sqlx_test.go "TestNilReceiver".
+	//
+	// I'm wondering if this is how that should work or if we should just allocate the slice
+	// for the user (would be an opt-in feature flag)
+	{
+		refElem := dbreflect.ValueOf(ptrToSlice)
+		if refElem.UnderlyingValue().IsNil() {
+			return errors.New("ScanSlice: must pass a pointer to slice, value cannot be nil")
+		}
+	}
+
 	direct := reflect.Indirect(reflect.ValueOf(ptrToSlice))
 	direct.SetLen(0)
 
@@ -486,6 +500,19 @@ func (rows *Rows) ScanStruct(ptrValue interface{}) error {
 	refType = refType.Elem()
 	if refType.Kind() != reflect.Struct {
 		return errors.New("ScanStruct: must pass a pointer to struct, not " + refType.Kind().String())
+	}
+	// Check validity
+	//
+	// note(jae): 2022-10-29
+	// This logic exists to satisfy sqlx_test.go "TestNilReceiver".
+	//
+	// I'm wondering if this is how that should work or if we should just allocate the struct
+	// for the user (would be an opt-in feature flag)
+	{
+		refElem := dbreflect.ValueOf(ptrValue)
+		if refElem.UnderlyingValue().IsNil() {
+			return errors.New("ScanStruct: must pass a pointer to struct, value cannot be nil")
+		}
 	}
 	columnNames, err := rows.rows.Columns()
 	if err != nil {

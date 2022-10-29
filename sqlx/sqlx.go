@@ -583,10 +583,13 @@ func (rows *Rows) isUnsafe() bool {
 	return sqlsw.SQLX_IsUnsafe(sqlxcompat.Use{}, &rows.rows)
 }
 
-// SliceScan using Rows
+// SliceScan a row, returning a []interface{} with values similar to MapScan.
+// This function is primarily intended for use where the number of columns
+// is not known.  Because you can pass an []interface{} directly to Scan,
+// it's recommended that you do that as it will not have to allocate new
+// slices per row.
 func (rows *Rows) SliceScan() ([]interface{}, error) {
-	panic("todo(jae): 2022-10-22: Implement rows.SliceScan")
-	// return SliceScan(r)
+	return SliceScan(sqlsw.SQLX_Rows(&rows.rows))
 }
 
 // MapScan scans a single Row into the dest map[string]interface{}.
@@ -878,4 +881,51 @@ func Rebind(bindType int, query string) string {
 	}
 
 	return string(append(rqb, query...))
+}
+
+// colScanner is an interface used by MapScan and SliceScan
+type colScanner interface {
+	Columns() ([]string, error)
+	Scan(dest ...interface{}) error
+	Err() error
+}
+
+// SliceScan a row, returning a []interface{} with values similar to MapScan.
+// This function is primarily intended for use where the number of columns
+// is not known.  Because you can pass an []interface{} directly to Scan,
+// it's recommended that you do that as it will not have to allocate new
+// slices per row.
+func SliceScan(r colScanner) ([]interface{}, error) {
+	// ignore r.started, since we needn't use reflect for anything.
+	columns, err := r.Columns()
+	if err != nil {
+		return []interface{}{}, err
+	}
+
+	ptrToValues := make([]interface{}, len(columns))
+	values := make([]interface{}, len(columns))
+	for i := 0; i < len(ptrToValues); i++ {
+		// note(jae): 2022-10-29
+		// Instead of new() we just create a backing interface{}
+		// array, allocate all at once, and use that.
+		// values[i] = new(interface{})
+		ptrToValues[i] = &values[i]
+	}
+
+	err = r.Scan(ptrToValues...)
+	if err != nil {
+		return []interface{}{}, err
+	}
+	if err := r.Err(); err != nil {
+		return []interface{}{}, err
+	}
+
+	// note(jae): 2022-10-29
+	// This stops making interfaces pointers to the value
+	// and just the value, we no longer need to do this.
+	//for i := range columns {
+	//	ptrToValues[i] = *(ptrToValues[i].(*interface{}))
+	//}
+
+	return values, nil
 }

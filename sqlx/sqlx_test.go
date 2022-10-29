@@ -590,18 +590,47 @@ func TestJoinQueryNamedPointerStructs(t *testing.T) {
 func TestSelectSliceMapTime(t *testing.T) {
 	RunWithSchema(defaultSchema, t, func(db *DB, t *testing.T, now string) {
 		loadDefaultFixture(db, t)
-		rows, err := db.Queryx("SELECT * FROM person")
-		if err != nil {
-			t.Fatal(err)
-		}
-		for rows.Next() {
-			_, err := rows.SliceScan()
+
+		// TestSliceScan
+		{
+			rows, err := db.Queryx("SELECT * FROM person")
 			if err != nil {
-				t.Error(err)
+				t.Fatal(err)
+			}
+			recordIndex := 0
+			for rows.Next() {
+				data, err := rows.SliceScan()
+				if err != nil {
+					t.Error(err)
+				}
+				if recordIndex == 0 {
+					// note(jae): 2022-10-29
+					// SQLX only tests for if there was an error or not.
+					// So we also assert at least some expected data below
+					expectedCount := 4
+					if len(data) != expectedCount {
+						t.Fatalf("expected SliceScan to return %d fields but got %d", expectedCount, len(data))
+					}
+					if expected := "Jason"; expected != data[0] {
+						t.Errorf("expected SliceScan field %d to return %v but got %v", 0, expected, data[0])
+					}
+					if expected := "Moiron"; expected != data[1] {
+						t.Errorf("expected SliceScan field %d to return %v but got %v", 1, expected, data[1])
+					}
+					if expected := "jmoiron@jmoiron.net"; expected != data[2] {
+						t.Errorf("expected SliceScan field %d to return %v but got %v", 2, expected, data[2])
+					}
+					// note(jae): 2022-10-29
+					// I cannot be bothered asserting the last time field
+				}
+				recordIndex++
+			}
+			if expectedRecordCount := 2; recordIndex != expectedRecordCount {
+				t.Fatalf("expected SliceScan to return %d records but got %d", expectedRecordCount, recordIndex)
 			}
 		}
 
-		rows, err = db.Queryx("SELECT * FROM person")
+		rows, err := db.Queryx("SELECT * FROM person")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -612,7 +641,6 @@ func TestSelectSliceMapTime(t *testing.T) {
 				t.Error(err)
 			}
 		}
-
 	})
 }
 
