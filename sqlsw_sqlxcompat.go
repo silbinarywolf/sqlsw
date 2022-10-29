@@ -15,6 +15,22 @@ import (
 
 var SQLXCompat sqlxCompat */
 
+// defaultSQLXCachingModule is used by the SQLX compatibility layer
+//
+// note(jae): 2022-10-29
+// we may want/need just 1 shared global var between sqlsw and sqlx
+// but for now lets be conservative.
+var defaultSQLXCachingModule = caching{
+	reflector: dbreflect.NewReflectModule(dbreflect.Options{}),
+}
+
+// defaultSQLXOptions is used by the SQLX compatibility layer
+//
+// note(jae): 2022-10-29
+// we may want/need just 1 shared global var between sqlsw and sqlx
+// but for now lets be conservative.
+var defaultSQLXOptions = &options{}
+
 // --------
 // WARNING:
 // --------
@@ -71,14 +87,8 @@ func SQLX_NamedStmt(namedStmt *NamedStmt) *sql.Stmt { return namedStmt.underlyin
 //
 // Deprecated: This may be changed or removed in the future. Do not use.
 func SQLX_NewRows(rows *sql.Rows, optionsData optionsObject, cachingData cachingObject) *Rows {
-	return newRows(rows, optionsData.getOptionsData(), cachingData.getCachingData())
+	return newRows(rows, *optionsData.getOptionsData(), cachingData.getCachingData())
 }
-
-var defaultSQLXCachingModule = caching{
-	reflector: dbreflect.NewReflectModule(dbreflect.Options{}),
-}
-
-var defaultSQLXOptions = &options{}
 
 func SQLX_DefaultOptionsObject(_ sqlxcompat.Use) optionsObject {
 	return defaultSQLXOptions
@@ -89,5 +99,13 @@ func SQLX_DefaultCacheObject(_ sqlxcompat.Use) cachingObject {
 }
 
 func SQLX_Unsafe(_ sqlxcompat.Use, options optionsObject) {
-	options.setAllowUnknownFields()
+	options.getOptionsData().allowUnknownFields = true
+}
+
+func SQLX_IsUnsafe(_ sqlxcompat.Use, options optionsObject) bool {
+	return options.getOptionsData().allowUnknownFields
+}
+
+func SQLX_TestDisableUnsafe(_ sqlxcompat.Use, options optionsObject) {
+	options.getOptionsData().allowUnknownFields = false
 }

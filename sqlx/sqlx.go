@@ -86,7 +86,6 @@ func (db *DB) PrepareNamedContext(ctx context.Context, query string) (*NamedStmt
 	}
 	stmt := &NamedStmt{}
 	stmt.namedStmt = *namedStmtUnderlying
-	stmt.unsafe = db.unsafe
 	return stmt, nil
 }
 
@@ -124,9 +123,16 @@ type Ext interface {
 func (db *DB) Unsafe() *DB {
 	newDB := new(DB)
 	*newDB = *db
-	newDB.unsafe = true
 	sqlsw.SQLX_Unsafe(sqlxcompat.Use{}, &newDB.db)
 	return newDB
+}
+
+func (db *DB) isUnsafe() bool {
+	return sqlsw.SQLX_IsUnsafe(sqlxcompat.Use{}, &db.db)
+}
+
+func (db *DB) testDisableUnsafe() {
+	sqlsw.SQLX_TestDisableUnsafe(sqlxcompat.Use{}, &db.db)
 }
 
 // Rebind a query within a transaction's bindvar type.
@@ -393,8 +399,6 @@ func (db *DB) Get(dest interface{}, query string, args ...interface{}) error {
 
 type NamedStmt struct {
 	namedStmt sqlsw.NamedStmt
-	// unsafe is true when unknown fields are allowed
-	unsafe bool
 }
 
 func (n *NamedStmt) Queryx(structOrMapArg interface{}) (*Rows, error) {
@@ -408,9 +412,18 @@ func (n *NamedStmt) QueryxContext(ctx context.Context, structOrMapArg interface{
 func (n *NamedStmt) Unsafe() *NamedStmt {
 	newNamedStmt := new(NamedStmt)
 	*newNamedStmt = *n
-	newNamedStmt.unsafe = true
 	sqlsw.SQLX_Unsafe(sqlxcompat.Use{}, &newNamedStmt.namedStmt)
+	// note(jae): 2022-10-29
+	// Bug in SQLX makes the underlying named statement unsafe so
+	// we retain that behaviour for backwards compat.
+	//
+	// See "TestMissingNames" in sqlx_test.go
+	sqlsw.SQLX_Unsafe(sqlxcompat.Use{}, &n.namedStmt)
 	return newNamedStmt
+}
+
+func (n *NamedStmt) isUnsafe() bool {
+	return sqlsw.SQLX_IsUnsafe(sqlxcompat.Use{}, &n.namedStmt)
 }
 
 // Select using this NamedStmt
@@ -422,13 +435,25 @@ func (n *NamedStmt) Select(dest interface{}, structOrMapArg interface{}) error {
 // SelectContext using this NamedStmt
 // Any named placeholder parameters are replaced with fields from structOrMapArg.
 func (n *NamedStmt) SelectContext(ctx context.Context, dest interface{}, structOrMapArg interface{}) error {
-	rows, err := n.QueryxContext(ctx, structOrMapArg)
+	rows, err := n.namedStmt.NamedQueryContext(ctx, structOrMapArg)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	if err := rows.ScanSlice(dest); err != nil {
+		return err
+	}
+	return rows.Err()
+
+	// note(jae): 2022-10-29
+	// Copied from SQLX
+	/* rows, err := n.QueryxContext(ctx, structOrMapArg)
 	if err != nil {
 		return err
 	}
 	// if something happens here, we want to make sure the rows are Closed
 	defer rows.Close()
-	return errors.New("TODO(jae): 2022-10-22: Implement namedStmt.SelectContext")
+	return errors.New("TODO(jae): 2022-10-22: Implement namedStmt.SelectContext") */
 	// return scanAll(rows, dest, false)
 }
 
@@ -460,9 +485,6 @@ type metadataInfo struct {
 	// driverName is the driver being used
 	driverName string
 	bindType   int
-	// unsafe is true when unknown fields are allowed
-	// ie. Getting fields from query that don't exist on the struct
-	unsafe bool
 	// note(jae): 2022-10-22
 	// Not supporting Mapper, at least at time of writing
 	// Mapper: db.Mapper
@@ -482,6 +504,12 @@ func newStmt(stmt *sql.Stmt, metadata metadataInfo) *Stmt {
 	newStmt.stmt = stmt
 	newStmt.metadataInfo = metadata
 	return newStmt
+}
+
+func (stmt *Stmt) isUnsafe() bool {
+	// note(jae): 2022-10-29
+	// No underlying, so default to false
+	return false
 }
 
 // SelectContext using the prepared statement.
@@ -551,6 +579,10 @@ func newRows(rows sqlsw.Rows, metadata metadataInfo) *Rows {
 	return newRows
 }
 
+func (rows *Rows) isUnsafe() bool {
+	return sqlsw.SQLX_IsUnsafe(sqlxcompat.Use{}, &rows.rows)
+}
+
 // SliceScan using Rows
 func (rows *Rows) SliceScan() ([]interface{}, error) {
 	panic("todo(jae): 2022-10-22: Implement rows.SliceScan")
@@ -595,8 +627,10 @@ func (rows *Rows) StructScan(ptrValue interface{}) error {
 // Row is the result of calling QueryRow to select a single row.
 type Row struct {
 	row sqlsw.Row
-	// unsafe is true when unknown fields are allowed
-	unsafe bool
+}
+
+func (row *Row) isUnsafe() bool {
+	return sqlsw.SQLX_IsUnsafe(sqlxcompat.Use{}, &row.row)
 }
 
 // Scan copies the columns in the current row into the values pointed
@@ -638,6 +672,10 @@ func GetContext(ctx context.Context, q QueryerContext, dest interface{}, query s
 type Tx struct {
 	underlying sqlsw.Tx
 	metadataInfo
+}
+
+func (tx *Tx) isUnsafe() bool {
+	return sqlsw.SQLX_IsUnsafe(sqlxcompat.Use{}, &tx.underlying)
 }
 
 // StmtContext returns a transaction-specific prepared statement from
@@ -755,28 +793,31 @@ func StructScan(rows rowsi, ptrValue interface{}) error {
 
 // determine if any of our extensions are unsafe
 func isUnsafe(i interface{}) bool {
+	// note(jae): 2022-10-29
+	// a lot of these used to be "v.unsafe" but in our SQLX version
+	// we do `v.isUnsafe()``
 	switch v := i.(type) {
 	case Row:
-		return v.unsafe
+		return v.isUnsafe()
 	case *Row:
-		return v.unsafe
+		return v.isUnsafe()
 	case Rows:
-		return v.unsafe
+		return v.isUnsafe()
 	case *Rows:
-		return v.unsafe
+		return v.isUnsafe()
 	case NamedStmt:
-		return v.unsafe
+		return v.isUnsafe()
 
 		//return v.Stmt.unsafe
 	case *NamedStmt:
-		return v.unsafe
+		return v.isUnsafe()
 		// note(jae): 2022-10-22
 		// Original SQLX checked for this:
 		// return v.Stmt.unsafe
 	case Stmt:
-		return v.unsafe
+		return v.isUnsafe()
 	case *Stmt:
-		return v.unsafe
+		return v.isUnsafe()
 	// todo(jae): 2022-10-22
 	// implement qStmt support if needed
 	/* case qStmt:
@@ -784,13 +825,13 @@ func isUnsafe(i interface{}) bool {
 	case *qStmt:
 		return v.unsafe */
 	case DB:
-		return v.unsafe
+		return v.isUnsafe()
 	case *DB:
-		return v.unsafe
+		return v.isUnsafe()
 	case Tx:
-		return v.unsafe
+		return v.isUnsafe()
 	case *Tx:
-		return v.unsafe
+		return v.isUnsafe()
 	case sql.Rows, *sql.Rows:
 		return false
 	default:

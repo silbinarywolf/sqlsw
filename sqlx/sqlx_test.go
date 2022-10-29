@@ -369,7 +369,7 @@ func TestMissingNames(t *testing.T) {
 			t.Fatal(err)
 		}
 		// its internal stmt should be marked unsafe
-		if !nstmt.unsafe { // note(jae): 2022-10-22: SQLX tested for `if !nstmt.Stmt.unsafe {`
+		if !nstmt.isUnsafe() { // note(jae): 2022-10-22: SQLX tested for `if !nstmt.Stmt.unsafe {`
 			t.Error("expected NamedStmt to be unsafe but its underlying stmt did not inherit safety")
 		}
 		pps = []PersonPlus{}
@@ -382,7 +382,7 @@ func TestMissingNames(t *testing.T) {
 		}
 
 		// test it with a safe db
-		db.unsafe = false
+		db.testDisableUnsafe() // note(jae): 2022-10-22: SQLX did `db.unsafe = false``
 		if isUnsafe(db) {
 			t.Error("expected db to be safe but it isn't")
 		}
@@ -394,6 +394,15 @@ func TestMissingNames(t *testing.T) {
 		if isUnsafe(nstmt) {
 			t.Error("NamedStmt did not inherit safety")
 		}
+		// note(jae): 2022-10-22:
+		// SQLX does just this here:
+		// - nstmt.Unsafe()
+		//
+		// but this behaviour is incorrect, it actually modifying the underlying statement.
+		// If it were correct, it would do:
+		// - nstmt = nstmt.Unsafe()
+		//
+		// So... we retain that incorrect behaviour here.
 		nstmt.Unsafe()
 		if !isUnsafe(nstmt) {
 			t.Error("expected newly unsafed NamedStmt to be unsafe")

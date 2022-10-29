@@ -81,16 +81,11 @@ type options struct {
 }
 
 type optionsObject interface {
-	setAllowUnknownFields()
-	getOptionsData() options
+	getOptionsData() *options
 }
 
-func (opts *options) setAllowUnknownFields() {
-	opts.allowUnknownFields = true
-}
-
-func (opts *options) getOptionsData() options {
-	return *opts
+func (opts *options) getOptionsData() *options {
+	return opts
 }
 
 // caching is extra information stored on db and passed around statements and transactions
@@ -181,10 +176,12 @@ type NamedStmt struct {
 	caching
 }
 
-func newNamedStmt(stmt *sql.Stmt, parameters []string) *NamedStmt {
+func newNamedStmt(stmt *sql.Stmt, parameters []string, optionsData options, cachingData caching) *NamedStmt {
 	s := &NamedStmt{}
 	s.underlying = stmt
 	s.parameters = parameters
+	s.options = optionsData
+	s.caching = cachingData
 	return s
 }
 
@@ -218,7 +215,7 @@ func (db *DB) NamedPrepareContext(ctx context.Context, query string) (*NamedStmt
 	if err != nil {
 		return nil, err
 	}
-	return newNamedStmt(stmt, parseResult.Parameters()), nil
+	return newNamedStmt(stmt, parseResult.Parameters(), db.options, db.caching), nil
 }
 
 // NamedPrepareContext creates a prepared statement for later queries or executions.
@@ -233,7 +230,7 @@ func (tx *Tx) NamedPrepareContext(ctx context.Context, query string) (*NamedStmt
 	if err != nil {
 		return nil, err
 	}
-	return newNamedStmt(stmt, parseResult.Parameters()), nil
+	return newNamedStmt(stmt, parseResult.Parameters(), tx.options, tx.caching), nil
 }
 
 // NamedExecContext executes a query without returning any rows.
@@ -323,6 +320,11 @@ func NamedQueryContext(ctx context.Context, dbOrTx namedQuery, query string, str
 type Row struct {
 	err  error
 	rows Rows
+}
+
+// getOptionsData is so a Row can be passed to SQLX compat layer
+func (row *Row) getOptionsData() *options {
+	return &row.rows.options
 }
 
 // ScanStruct copies the columns in the current row into the given struct.
