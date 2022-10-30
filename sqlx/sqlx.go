@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/silbinarywolf/sqlsw"
+	"github.com/silbinarywolf/sqlsw/internal/dbreflect"
 	"github.com/silbinarywolf/sqlsw/internal/sqlxcompat"
 )
 
@@ -402,8 +403,24 @@ func (db *DB) GetContext(ctx context.Context, dest interface{}, query string, ar
 		}
 		return sql.ErrNoRows
 	}
-	if err := rows.ScanStruct(dest); err != nil {
-		return err
+	{
+		refType := dbreflect.TypeOf(dest)
+		if refType.Kind() != reflect.Ptr {
+			return errors.New("GetContext: must pass a pointer, not a value")
+		}
+		refType = refType.Elem()
+		if refType.IsScannable() {
+			// Call Scan directly for ints, time.Time, etc
+			err = sqlRows.Scan(dest)
+			if err != nil {
+				return err
+			}
+		} else {
+			// Call ScanStruct for structs
+			if err := rows.ScanStruct(dest); err != nil {
+				return err
+			}
+		}
 	}
 	return rows.Err()
 }

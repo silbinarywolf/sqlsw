@@ -90,10 +90,9 @@ func (field *StructField) AddrWithNew(structAsReflectValue Value) interface{} {
 				v.Set(reflect.New(v.Type().Elem()))
 			}
 		case reflect.Map:
-			panic("todo(jae): Test this proper")
-			/* if v.IsNil() {
-				v.Set(reflect.MakeMap(v.Type().Elem()))
-			} */
+			if v.IsNil() {
+				v.Set(reflect.MakeMap(v.Type()))
+			}
 		}
 	}
 	return v.Addr().Interface()

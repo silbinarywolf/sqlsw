@@ -759,7 +759,7 @@ func TestNamedQuery(t *testing.T) {
 
 		// note(jae): 2022-10-22
 		// Not supporting Mapper for now
-		//old := *db.Mapper
+		/* old := *db.Mapper
 
 		type JSONPerson struct {
 			FirstName sql.NullString `json:"FIRST"`
@@ -847,7 +847,7 @@ func TestNamedQuery(t *testing.T) {
 
 		// note(jae): 2022-10-22
 		// Not supporting Mapper for now
-		//db.Mapper = &old
+		db.Mapper = &old */
 
 		// Test nested structs
 		type Place struct {
@@ -1431,9 +1431,7 @@ func TestDoNotPanicOnConnect(t *testing.T) {
 	}
 }
 
-// todo(jae): 2022-10-22
-// Implement and test "Rebind" for backwards compat
-/* func TestRebind(t *testing.T) {
+func TestRebind(t *testing.T) {
 	q1 := `INSERT INTO foo (a, b, c, d, e, f, g, h, i) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 	q2 := `INSERT INTO foo (a, b, c) VALUES (?, ?, "foo"), ("Hi", ?, ?)`
 
@@ -1472,10 +1470,8 @@ func TestDoNotPanicOnConnect(t *testing.T) {
 	if s2 != ex2 {
 		t.Error("q2 failed on Named params")
 	}
-} */
+}
 
-// todo(jae): 2022-10-22
-// Test "bindMap" cases
 /* func TestBindMap(t *testing.T) {
 	// Test that it works..
 	q1 := `INSERT INTO foo (a, b, c, d) VALUES (:name, :age, :first, :last)`
@@ -1960,9 +1956,7 @@ func BenchmarkIn1kString(b *testing.B) {
 	}
 }*/
 
-// todo(jae): 2022-10-22
-// Re-add benchmarks for Rebind()
-/* func BenchmarkRebind(b *testing.B) {
+func BenchmarkRebind(b *testing.B) {
 	b.StopTimer()
 	q1 := `INSERT INTO foo (a, b, c, d, e, f, g, h, i) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
 	q2 := `INSERT INTO foo (a, b, c) VALUES (?, ?, "foo"), ("Hi", ?, ?)`
@@ -1972,7 +1966,7 @@ func BenchmarkIn1kString(b *testing.B) {
 		Rebind(DOLLAR, q1)
 		Rebind(DOLLAR, q2)
 	}
-} */
+}
 
 // note(jae): 2022-10-22
 // An benchmark of the experiment rebindBuff function.
