@@ -311,6 +311,16 @@ func (db *DB) MustExec(query string, args ...interface{}) sql.Result {
 	return r
 }
 
+// MustExecContext using this DB.
+// Any named placeholder parameters are replaced with fields from arg.
+func (db *DB) MustExecContext(ctx context.Context, query string, args ...interface{}) sql.Result {
+	r, err := db.ExecContext(ctx, query, args...)
+	if err != nil {
+		panic(err)
+	}
+	return r
+}
+
 // NamedExecContext using this DB.
 // Any named placeholder parameters are replaced with fields from arg.
 func (db *DB) NamedExecContext(ctx context.Context, query string, structOrMapArg interface{}) (sql.Result, error) {
@@ -784,6 +794,16 @@ func (tx *Tx) Rollback() error {
 // For example: an INSERT and UPDATE.
 func (tx *Tx) MustExec(query string, args ...interface{}) sql.Result {
 	sqlResult, err := sqlsw.SQLX_Tx(&tx.underlying).Exec(query, args...)
+	if err != nil {
+		panic(err)
+	}
+	return sqlResult
+}
+
+// MustExecContext executes a query that doesn't return rows.
+// For example: an INSERT and UPDATE.
+func (tx *Tx) MustExecContext(ctx context.Context, query string, args ...interface{}) sql.Result {
+	sqlResult, err := sqlsw.SQLX_Tx(&tx.underlying).ExecContext(ctx, query, args...)
 	if err != nil {
 		panic(err)
 	}
