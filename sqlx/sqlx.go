@@ -217,6 +217,29 @@ func newTx(tx sqlsw.Tx, metadata metadataInfo) *Tx {
 	return t
 }
 
+// Begin starts a transaction. The default isolation level is dependent on
+// the driver.
+//
+// Begin uses context.Background internally; to specify the context, use
+// BeginTx.
+func (db *DB) Begin() (*sql.Tx, error) {
+	return sqlsw.SQLX_DB(&db.db).Begin()
+}
+
+// BeginTx starts a transaction.
+//
+// The provided context is used until the transaction is committed or rolled back.
+// If the context is canceled, the sql package will roll back
+// the transaction. Tx.Commit will return an error if the context provided to
+// BeginTx is canceled.
+//
+// The provided TxOptions is optional and may be nil if defaults should be used.
+// If a non-default isolation level is used that the driver doesn't support,
+// an error will be returned.
+func (db *DB) BeginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, error) {
+	return sqlsw.SQLX_DB(&db.db).BeginTx(ctx, opts)
+}
+
 // Beginx begins a transaction and returns an *sqlx.Tx instead of an *sql.Tx.
 func (db *DB) Beginx() (*Tx, error) {
 	sqlswTx, err := db.db.BeginTx(context.Background(), nil)
@@ -755,8 +778,9 @@ func (tx *Tx) MustExec(query string, args ...interface{}) sql.Result {
 
 // NamedStmtContext returns a version of the prepared statement which runs
 // within a transaction.
-func (tx *Tx) NamedStmtContext(ctx context.Context, stmt *NamedStmt) *NamedStmt {
-	panic("TODO(jae): 2022-10-22: Implement tx.NamedStmtContext")
+func (tx *Tx) NamedStmtContext(ctx context.Context, nstmt *NamedStmt) *NamedStmt {
+	panic("TODO(jae): 2022-10-22: Implement tx.NamedStmtContext properly")
+	return newNamedStmt(nstmt.namedStmt, tx.metadataInfo)
 	// return newNamedStmt(*namedStmtUnderlying, db.metadataInfo)
 	/* return &NamedStmt{
 		QueryString: stmt.QueryString,
