@@ -779,14 +779,8 @@ func (tx *Tx) MustExec(query string, args ...interface{}) sql.Result {
 // NamedStmtContext returns a version of the prepared statement which runs
 // within a transaction.
 func (tx *Tx) NamedStmtContext(ctx context.Context, nstmt *NamedStmt) *NamedStmt {
-	panic("TODO(jae): 2022-10-22: Implement tx.NamedStmtContext properly")
-	return newNamedStmt(nstmt.namedStmt, tx.metadataInfo)
-	// return newNamedStmt(*namedStmtUnderlying, db.metadataInfo)
-	/* return &NamedStmt{
-		QueryString: stmt.QueryString,
-		Params:      stmt.Params,
-		Stmt:        tx.StmtxContext(ctx, stmt.Stmt),
-	} */
+	sqlswNamedStmt := tx.underlying.NamedStmtContext(ctx, &nstmt.namedStmt)
+	return newNamedStmt(*sqlswNamedStmt, tx.metadataInfo)
 }
 
 type rowsi interface {

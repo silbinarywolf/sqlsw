@@ -232,6 +232,29 @@ func (db *DB) NamedPrepareContext(ctx context.Context, query string) (*NamedStmt
 	return newNamedStmt(stmt, parseResult.Parameters(), db.options, db.caching), nil
 }
 
+// NamedStmtContext returns a transaction-specific prepared statement from
+// an existing statement.
+//
+// Example:
+//
+//	updateMoney, err := db.Prepare("UPDATE balance SET money=money+? WHERE id=?")
+//	...
+//	tx, err := db.Begin()
+//	...
+//	res, err := tx.StmtContext(ctx, updateMoney).Exec(123.45, 98293203)
+//
+// The provided context is used for the preparation of the statement, not for the
+// execution of the statement.
+//
+// The returned statement operates within the transaction and will be closed
+// when the transaction has been committed or rolled back.
+func (tx *Tx) NamedStmtContext(ctx context.Context, namedStmt *NamedStmt) *NamedStmt {
+	newNamedStmt := &NamedStmt{}
+	*newNamedStmt = *namedStmt
+	newNamedStmt.underlying = tx.underlying.StmtContext(ctx, namedStmt.underlying)
+	return newNamedStmt
+}
+
 // NamedPrepareContext creates a prepared statement for later queries or executions.
 func (tx *Tx) NamedPrepareContext(ctx context.Context, query string) (*NamedStmt, error) {
 	parseResult, err := parseNamedQuery(query, sqlparser.Options{
