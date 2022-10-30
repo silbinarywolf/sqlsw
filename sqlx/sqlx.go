@@ -78,15 +78,20 @@ func (db *DB) PingContext(ctx context.Context) error {
 	return db.db.PingContext(ctx)
 }
 
+func newNamedStmt(namedStmt sqlsw.NamedStmt, metadata metadataInfo) *NamedStmt {
+	nstmt := &NamedStmt{}
+	nstmt.namedStmt = namedStmt
+	nstmt.metadataInfo = metadata
+	return nstmt
+}
+
 // PrepareNamedContext creates a prepared statement for later queries or executions.
 func (db *DB) PrepareNamedContext(ctx context.Context, query string) (*NamedStmt, error) {
 	namedStmtUnderlying, err := db.db.NamedPrepareContext(ctx, query)
 	if err != nil {
 		return nil, err
 	}
-	stmt := &NamedStmt{}
-	stmt.namedStmt = *namedStmtUnderlying
-	return stmt, nil
+	return newNamedStmt(*namedStmtUnderlying, db.metadataInfo), nil
 }
 
 // Execer is an interface used by MustExec and LoadFile
@@ -380,10 +385,6 @@ func (db *DB) GetContext(ctx context.Context, dest interface{}, query string, ar
 		}
 		return sql.ErrNoRows
 	}
-	// todo(jae): 2022-10-23
-	// GetContext needs to support:
-	// - Scannable like sqlx
-	// - Possibly support map[string]interface{}
 	if err := rows.ScanStruct(dest); err != nil {
 		return err
 	}
@@ -399,6 +400,7 @@ func (db *DB) Get(dest interface{}, query string, args ...interface{}) error {
 
 type NamedStmt struct {
 	namedStmt sqlsw.NamedStmt
+	metadataInfo
 }
 
 func (n *NamedStmt) Queryx(structOrMapArg interface{}) (*Rows, error) {
@@ -406,7 +408,11 @@ func (n *NamedStmt) Queryx(structOrMapArg interface{}) (*Rows, error) {
 }
 
 func (n *NamedStmt) QueryxContext(ctx context.Context, structOrMapArg interface{}) (*Rows, error) {
-	panic("TODO(jae): 2022-10-22: Support QueryxContext")
+	sqlswRows, err := n.namedStmt.NamedQueryContext(ctx, structOrMapArg)
+	if err != nil {
+		return nil, err
+	}
+	return newRows(*sqlswRows, n.metadataInfo), nil
 }
 
 func (n *NamedStmt) Unsafe() *NamedStmt {
@@ -460,16 +466,15 @@ func (n *NamedStmt) SelectContext(ctx context.Context, dest interface{}, structO
 // ExecContext executes a named statement using the struct passed.
 // Any named placeholder parameters are replaced with fields from arg.
 func (n *NamedStmt) ExecContext(ctx context.Context, structOrMapArg interface{}) (sql.Result, error) {
-	return nil, errors.New("TODO(jae): 2022-10-22: Implement ExecContext")
-	/* args, err := bindAnyArgs(n.Params, structOrMapArg, n.Stmt.Mapper)
+	sqlResult, err := n.namedStmt.NamedExecContext(ctx, structOrMapArg)
 	if err != nil {
-		return nil, err
 		// note(jae): 2022-10-22
 		// SQLX returns *new(sql.Result) but thats then returning
 		// a newed interface. Probably shouldn't do that.
 		// return *new(sql.Result), err
+		return nil, err
 	}
-	return n.namedStmt.Stmt().ExecContext(ctx, args...) */
+	return sqlResult, nil
 }
 
 // func (stmt *NamedStmt) Stmt() *sql.Stmt {
@@ -758,6 +763,7 @@ func (tx *Tx) MustExec(query string, args ...interface{}) sql.Result {
 // within a transaction.
 func (tx *Tx) NamedStmtContext(ctx context.Context, stmt *NamedStmt) *NamedStmt {
 	panic("TODO(jae): 2022-10-22: Implement tx.NamedStmtContext")
+	// return newNamedStmt(*namedStmtUnderlying, db.metadataInfo)
 	/* return &NamedStmt{
 		QueryString: stmt.QueryString,
 		Params:      stmt.Params,

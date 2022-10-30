@@ -68,7 +68,7 @@ func Parse(query string, options Options) (ParseResult, error) {
 			startPos := pos
 			for pos < len(query) {
 				r, size := utf8.DecodeRuneInString(query[pos:])
-				if !unicode.IsLetter(r) && !unicode.IsDigit(r) {
+				if !unicode.IsLetter(r) && !unicode.IsDigit(r) && r != '_' && r != '.' {
 					break
 				}
 				pos += size

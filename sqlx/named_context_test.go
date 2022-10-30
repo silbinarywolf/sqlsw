@@ -78,7 +78,9 @@ func TestNamedContextQueries(t *testing.T) {
 		ns, err = db.PrepareNamedContext(ctx, `
 			INSERT INTO person (first_name, last_name, email)
 			VALUES (:first_name, :last_name, :email)`)
-		test.Error(err)
+		if err != nil {
+			t.Error(err)
+		}
 
 		js := Person{
 			FirstName: "Julien",
@@ -86,11 +88,15 @@ func TestNamedContextQueries(t *testing.T) {
 			Email:     "jsavea@ab.co.nz",
 		}
 		_, err = ns.ExecContext(ctx, js)
-		test.Error(err)
+		if err != nil {
+			t.Error(err)
+		}
 
 		// Make sure we can pull him out again
 		p2 := Person{}
-		db.GetContext(ctx, &p2, db.Rebind("SELECT * FROM person WHERE email=?"), js.Email)
+		if err := db.GetContext(ctx, &p2, db.Rebind("SELECT * FROM person WHERE email=?"), js.Email); err != nil {
+			t.Errorf("unexpected error: %s", err)
+		}
 		if p2.Email != js.Email {
 			t.Errorf("expected %s, got %s", js.Email, p2.Email)
 		}
