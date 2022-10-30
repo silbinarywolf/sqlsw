@@ -193,8 +193,24 @@ func (stmt *NamedStmt) Close() error {
 	return stmt.underlying.Close()
 }
 
-func (db *DB) Begin() (*Tx, error) {
-	tx, err := db.db.Begin()
+// Begin starts a transaction. The default isolation level is dependent on
+// the driver.
+func (db *DB) Begin(ctx context.Context) (*Tx, error) {
+	return db.BeginTx(ctx, nil)
+}
+
+// BeginTx starts a transaction.
+//
+// The provided context is used until the transaction is committed or rolled back.
+// If the context is canceled, the sql package will roll back
+// the transaction. Tx.Commit will return an error if the context provided to
+// BeginTx is canceled.
+//
+// The provided TxOptions is optional and may be nil if defaults should be used.
+// If a non-default isolation level is used that the driver doesn't support,
+// an error will be returned.
+func (db *DB) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) {
+	tx, err := db.db.BeginTx(ctx, opts)
 	if err != nil {
 		return nil, err
 	}

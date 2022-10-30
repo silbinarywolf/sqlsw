@@ -219,11 +219,11 @@ func newTx(tx sqlsw.Tx, metadata metadataInfo) *Tx {
 
 // Beginx begins a transaction and returns an *sqlx.Tx instead of an *sql.Tx.
 func (db *DB) Beginx() (*Tx, error) {
-	tx, err := db.db.Begin()
+	sqlswTx, err := db.db.BeginTx(context.Background(), nil)
 	if err != nil {
 		return nil, err
 	}
-	return newTx(*tx, db.metadataInfo), nil
+	return newTx(*sqlswTx, db.metadataInfo), nil
 }
 
 // BeginTxx begins a transaction and returns an *sqlx.Tx instead of an
@@ -234,17 +234,11 @@ func (db *DB) Beginx() (*Tx, error) {
 // transaction. Tx.Commit will return an error if the context provided to
 // BeginxContext is canceled.
 func (db *DB) BeginTxx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) {
-	panic("TODO(jae): 2022-10-22: Implement BeginTxx")
-	/* tx, err := db.db.BeginTx(ctx, opts)
+	sqlswTx, err := db.db.BeginTx(ctx, opts)
 	if err != nil {
 		return nil, err
 	}
-	return &Tx{
-		tx:         tx,
-		driverName: db.DriverName(),
-		unsafe:     db.db,
-		//Mapper: db.Mapper
-	}, err */
+	return newTx(*sqlswTx, db.metadataInfo), nil
 }
 
 // Exec executes a named statement using the struct passed.
