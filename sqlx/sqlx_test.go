@@ -1956,6 +1956,13 @@ func BenchmarkIn1kString(b *testing.B) {
 	}
 }*/
 
+// cpu: AMD Ryzen 5 3600 6-Core Processor
+// BenchmarkRebind-12    	 1566894	       773.6 ns/op	     160 B/op	       2 allocs/op
+// BenchmarkRebind-12    	 1550694	       778.2 ns/op	     160 B/op	       2 allocs/op
+// BenchmarkRebind-12    	 1556058	       772.8 ns/op	     160 B/op	       2 allocs/op
+//
+// note(jae): 2022-10-30
+// Our version of Rebind is 2.3x slower, however it'll properly handle unicode.
 func BenchmarkRebind(b *testing.B) {
 	b.StopTimer()
 	q1 := `INSERT INTO foo (a, b, c, d, e, f, g, h, i) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
@@ -1968,9 +1975,30 @@ func BenchmarkRebind(b *testing.B) {
 	}
 }
 
+// cpu: AMD Ryzen 5 3600 6-Core Processor
+// BenchmarkRebind-12    	 3273349	       369.0 ns/op	     336 B/op	       4 allocs/op
+// BenchmarkRebind-12    	 3273349	       369.0 ns/op	     336 B/op	       4 allocs/op
+// BenchmarkRebind-12    	 3436002	       356.5 ns/op	     336 B/op	       4 allocs/op
+func BenchmarkRebindOriginalFromSQLX(b *testing.B) {
+	b.StopTimer()
+	q1 := `INSERT INTO foo (a, b, c, d, e, f, g, h, i) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+	q2 := `INSERT INTO foo (a, b, c) VALUES (?, ?, "foo"), ("Hi", ?, ?)`
+	b.StartTimer()
+
+	for i := 0; i < b.N; i++ {
+		rebindOriginal(DOLLAR, q1)
+		rebindOriginal(DOLLAR, q2)
+	}
+}
+
 // note(jae): 2022-10-22
 // An benchmark of the experiment rebindBuff function.
-// Don't bother reimplementing.
+// Don't bother reimplementing as it's 3x slower than my own naive replacement implementation.
+//
+// cpu: AMD Ryzen 5 3600 6-Core Processor
+// BenchmarkRebindBuffer-12    	  990499	      1113 ns/op	     592 B/op	       6 allocs/op
+// BenchmarkRebindBuffer-12    	 1000000	      1104 ns/op	     592 B/op	       6 allocs/op
+// BenchmarkRebindBuffer-12    	  923104	      1253 ns/op	     592 B/op	       6 allocs/op
 /* func BenchmarkRebindBuffer(b *testing.B) {
 	b.StopTimer()
 	q1 := `INSERT INTO foo (a, b, c, d, e, f, g, h, i) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`

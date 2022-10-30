@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/silbinarywolf/sqlsw"
 	"github.com/silbinarywolf/sqlsw/internal/dbreflect"
@@ -883,6 +884,68 @@ func (tx *Tx) Rebind(query string) string {
 
 // Rebind a query from the default bindtype (QUESTION) to the target bindtype.
 func Rebind(bindType int, query string) string {
+	switch bindType {
+	case QUESTION, UNKNOWN:
+		return query
+	}
+
+	var (
+		stackQuery [128]byte
+		// varCount is how many ? parameters are in the query string
+		varCount = 0
+	)
+
+	// Setup query replacement buffer
+	var queryReplace []byte
+	if len(query) >= len(stackQuery) {
+		// If we're likely going to go over stack bytes
+		// just allocate once here
+		//
+		// note from SQLX: Add space enough for 10 params before we have to allocate
+		queryReplace = make([]byte, 0, len(query)+10)
+	} else {
+		// Use bytes on the stack while building the new query string
+		queryReplace = stackQuery[:0]
+	}
+
+	for pos := 0; pos < len(query); {
+		r, size := utf8.DecodeRuneInString(query[pos:])
+		pos += size
+
+		// todo(jae): 2022-10-30
+		// Once sqlparser has handled escaped strings correctly, we should avoid
+		// handling ? within strings here too.
+		switch r {
+		case '?':
+			switch bindType {
+			case DOLLAR:
+				queryReplace = append(queryReplace, '$')
+			case NAMED:
+				queryReplace = append(queryReplace, ':', 'a', 'r', 'g')
+			case AT:
+				queryReplace = append(queryReplace, '@', 'p')
+			}
+			varCount++
+			queryReplace = strconv.AppendInt(queryReplace, int64(varCount), 10)
+			continue
+		}
+		queryReplace = utf8.AppendRune(queryReplace, r)
+	}
+
+	return string(queryReplace)
+}
+
+/* func appendString(slice []byte, str string) []byte {
+	r := slice
+	for i := range str {
+		r = append(r, str[i])
+	}
+	return r
+} */
+
+// rebindOriginal a query from the default bindtype (QUESTION) to the target bindtype.
+// From v1.3.5 of SQLX
+func rebindOriginal(bindType int, query string) string {
 	switch bindType {
 	case QUESTION, UNKNOWN:
 		return query
