@@ -1620,9 +1620,7 @@ func TestIssue197(t *testing.T) {
 	})
 }
 
-// todo(jae): 2022-10-22
-// Add backwards compatibility for In() function
-/* func TestIn(t *testing.T) {
+func TestIn(t *testing.T) {
 	// some quite normal situations
 	type tr struct {
 		q    string
@@ -1720,7 +1718,7 @@ func TestIssue197(t *testing.T) {
 			t.Errorf("Expecting hong kong second, but got %#v", places[1])
 		}
 	})
-} */
+}
 
 // todo(jae): 2022-10-22
 // Add tests for bindStruct, likely just test against sqlparser
@@ -1916,9 +1914,11 @@ func TestEmbeddedLiterals(t *testing.T) {
 	}
 } */
 
-// todo(jae): 2022-10-22
-// Re-add benchmarks for In() functions
-/* func BenchmarkIn(b *testing.B) {
+// cpu: AMD Ryzen 5 3600 6-Core Processor
+// BenchmarkIn-12    	 3169233	       381.5 ns/op	     264 B/op	       4 allocs/op
+// BenchmarkIn-12    	 3170632	       376.5 ns/op	     264 B/op	       4 allocs/op
+// BenchmarkIn-12    	 3066543	       381.0 ns/op	     264 B/op	       4 allocs/op
+func BenchmarkIn(b *testing.B) {
 	q := `SELECT * FROM foo WHERE x = ? AND v in (?) AND y = ?`
 
 	for i := 0; i < b.N; i++ {
@@ -1926,6 +1926,10 @@ func TestEmbeddedLiterals(t *testing.T) {
 	}
 }
 
+// cpu: AMD Ryzen 5 3600 6-Core Processor
+// BenchmarkIn1k-12    	  221370	      5723 ns/op	   19480 B/op	       3 allocs/op
+// BenchmarkIn1k-12    	  211412	      5770 ns/op	   19480 B/op	       3 allocs/op
+// BenchmarkIn1k-12    	  216529	      5465 ns/op	   19480 B/op	       3 allocs/op
 func BenchmarkIn1k(b *testing.B) {
 	q := `SELECT * FROM foo WHERE x = ? AND v in (?) AND y = ?`
 
@@ -1936,6 +1940,9 @@ func BenchmarkIn1k(b *testing.B) {
 	}
 }
 
+// cpu: AMD Ryzen 5 3600 6-Core Processor
+// BenchmarkIn1kInt-12    	  150253	      8064 ns/op	   19480 B/op	       3 allocs/op
+// BenchmarkIn1kInt-12    	  141122	      8306 ns/op	   19480 B/op	       3 allocs/op
 func BenchmarkIn1kInt(b *testing.B) {
 	q := `SELECT * FROM foo WHERE x = ? AND v in (?) AND y = ?`
 
@@ -1954,7 +1961,7 @@ func BenchmarkIn1kString(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		_, _, _ = In(q, []interface{}{"foo", vals[:], "bar"}...)
 	}
-}*/
+}
 
 // cpu: AMD Ryzen 5 3600 6-Core Processor
 // BenchmarkRebind-12    	 1566894	       773.6 ns/op	     160 B/op	       2 allocs/op
@@ -2011,9 +2018,6 @@ func BenchmarkRebindOriginalFromSQLX(b *testing.B) {
 	}
 } */
 
-// todo(jae): 2022-10-22
-// Re-add testing for In() function
-/*
 func TestIn130Regression(t *testing.T) {
 	t.Run("[]interface{}{}", func(t *testing.T) {
 		q, args, err := In("SELECT * FROM people WHERE name IN (?)", []interface{}{[]string{"gopher"}}...)
@@ -2052,7 +2056,7 @@ func TestIn130Regression(t *testing.T) {
 			}
 		}
 	})
-} */
+}
 
 func TestSelectReset(t *testing.T) {
 	RunWithSchema(defaultSchema, t, func(db *DB, t *testing.T, now string) {

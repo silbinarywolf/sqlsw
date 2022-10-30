@@ -7,9 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
-	"strconv"
-	"strings"
-	"unicode/utf8"
 
 	"github.com/silbinarywolf/sqlsw"
 	"github.com/silbinarywolf/sqlsw/internal/dbreflect"
@@ -880,104 +877,6 @@ func isUnsafe(i interface{}) bool {
 // Rebind a query within a transaction's bindvar type.
 func (tx *Tx) Rebind(query string) string {
 	return Rebind(tx.bindType, query)
-}
-
-// Rebind a query from the default bindtype (QUESTION) to the target bindtype.
-func Rebind(bindType int, query string) string {
-	switch bindType {
-	case QUESTION, UNKNOWN:
-		return query
-	}
-
-	var (
-		stackQuery [128]byte
-		// varCount is how many ? parameters are in the query string
-		varCount = 0
-	)
-
-	// Setup query replacement buffer
-	var queryReplace []byte
-	if len(query) >= len(stackQuery) {
-		// If we're likely going to go over stack bytes
-		// just allocate once here
-		//
-		// note from SQLX: Add space enough for 10 params before we have to allocate
-		queryReplace = make([]byte, 0, len(query)+10)
-	} else {
-		// Use bytes on the stack while building the new query string
-		queryReplace = stackQuery[:0]
-	}
-
-	for pos := 0; pos < len(query); {
-		r, size := utf8.DecodeRuneInString(query[pos:])
-		pos += size
-
-		// todo(jae): 2022-10-30
-		// Once sqlparser has handled escaped strings correctly, we should avoid
-		// handling ? within strings here too.
-		switch r {
-		case '?':
-			switch bindType {
-			case DOLLAR:
-				queryReplace = append(queryReplace, '$')
-			case NAMED:
-				queryReplace = append(queryReplace, ':', 'a', 'r', 'g')
-			case AT:
-				queryReplace = append(queryReplace, '@', 'p')
-			}
-			varCount++
-			queryReplace = strconv.AppendInt(queryReplace, int64(varCount), 10)
-			continue
-		}
-		queryReplace = utf8.AppendRune(queryReplace, r)
-	}
-
-	return string(queryReplace)
-}
-
-/* func appendString(slice []byte, str string) []byte {
-	r := slice
-	for i := range str {
-		r = append(r, str[i])
-	}
-	return r
-} */
-
-// rebindOriginal a query from the default bindtype (QUESTION) to the target bindtype.
-// From v1.3.5 of SQLX
-func rebindOriginal(bindType int, query string) string {
-	switch bindType {
-	case QUESTION, UNKNOWN:
-		return query
-	}
-	// note(jae): 2022-10-22
-	// Borrowed from sqlx directly. We could probably write a parser
-	// that's faster than this implementation later.
-
-	// Add space enough for 10 params before we have to allocate
-	rqb := make([]byte, 0, len(query)+10)
-
-	var i, j int
-
-	for i = strings.Index(query, "?"); i != -1; i = strings.Index(query, "?") {
-		rqb = append(rqb, query[:i]...)
-
-		switch bindType {
-		case DOLLAR:
-			rqb = append(rqb, '$')
-		case NAMED:
-			rqb = append(rqb, ':', 'a', 'r', 'g')
-		case AT:
-			rqb = append(rqb, '@', 'p')
-		}
-
-		j++
-		rqb = strconv.AppendInt(rqb, int64(j), 10)
-
-		query = query[i+1:]
-	}
-
-	return string(append(rqb, query...))
 }
 
 // colScanner is an interface used by MapScan and SliceScan
