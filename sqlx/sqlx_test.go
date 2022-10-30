@@ -630,15 +630,40 @@ func TestSelectSliceMapTime(t *testing.T) {
 			}
 		}
 
-		rows, err := db.Queryx("SELECT * FROM person")
-		if err != nil {
-			t.Fatal(err)
-		}
-		for rows.Next() {
-			m := map[string]interface{}{}
-			err := rows.MapScan(m)
+		{
+			rows, err := db.Queryx("SELECT * FROM person")
 			if err != nil {
-				t.Error(err)
+				t.Fatal(err)
+			}
+			recordIndex := 0
+			for rows.Next() {
+				m := map[string]interface{}{}
+				err := rows.MapScan(m)
+				if err != nil {
+					t.Error(err)
+				}
+				if recordIndex == 0 {
+					// note(jae): 2022-10-30
+					// SQLX only tests for if there was an error or not.
+					// So we also assert at least some expected data below
+					expectedCount := 4
+					if len(m) != expectedCount {
+						t.Fatalf("expected MapScan to return %d fields but got %d", expectedCount, len(m))
+					}
+					if expected := "Jason"; expected != m["first_name"] {
+						t.Errorf("expected MapScan field %d to return %v but got %v", 0, expected, m["first_name"])
+					}
+					if expected := "Moiron"; expected != m["last_name"] {
+						t.Errorf("expected MapScan field %d to return %v but got %v", 1, expected, m["last_name"])
+					}
+					if expected := "jmoiron@jmoiron.net"; expected != m["email"] {
+						t.Errorf("expected MapScan field %d to return %v but got %v", 2, expected, m["email"])
+					}
+				}
+				recordIndex++
+			}
+			if expectedRecordCount := 2; recordIndex != expectedRecordCount {
+				t.Fatalf("expected MapScan to return %d records but got %d", expectedRecordCount, recordIndex)
 			}
 		}
 	})

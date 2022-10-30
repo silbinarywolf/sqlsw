@@ -616,8 +616,7 @@ func (rows *Rows) SliceScan() ([]interface{}, error) {
 
 // MapScan scans a single Row into the dest map[string]interface{}.
 func (rows *Rows) MapScan(dest map[string]interface{}) error {
-	panic("todo(jae): 2022-10-22: Implement rows.MapScan")
-	// return MapScan(r)
+	return MapScan(sqlsw.SQLX_Rows(&rows.rows), dest)
 }
 
 func (rows *Rows) Next() bool {
@@ -946,4 +945,35 @@ func SliceScan(r colScanner) ([]interface{}, error) {
 	//}
 
 	return values, nil
+}
+
+// MapScan scans a single Row into the dest map[string]interface{}.
+// Use this to get results for SQL that might not be under your control
+// (for instance, if you're building an interface for an SQL server that
+// executes SQL from input).  Please do not use this as a primary interface!
+// This will modify the map sent to it in place, so reuse the same map with
+// care.  Columns which occur more than once in the result will overwrite
+// each other!
+func MapScan(r colScanner, dest map[string]interface{}) error {
+	// ignore r.started, since we needn't use reflect for anything.
+	columns, err := r.Columns()
+	if err != nil {
+		return err
+	}
+
+	ptrToValues := make([]interface{}, len(columns))
+	for i := range columns {
+		ptrToValues[i] = new(interface{})
+	}
+
+	err = r.Scan(ptrToValues...)
+	if err != nil {
+		return err
+	}
+
+	for i, column := range columns {
+		dest[column] = *(ptrToValues[i].(*interface{}))
+	}
+
+	return r.Err()
 }

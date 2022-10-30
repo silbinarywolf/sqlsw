@@ -764,7 +764,7 @@ func getArgumentListFromParameters(reflector *dbreflect.ReflectModule, parameter
 			for _, parameterName := range parameterNames {
 				field, ok := structData.GetFieldByName(parameterName)
 				if !ok {
-					return nil, errors.New(parameterName + " was not found on struct")
+					return nil, errors.New(`"` + parameterName + `" field was not found on struct ` + reflectArgs.UnderlyingValue().Type().Name() + `, fields available are: ` + fmt.Sprintf("%+v", structData.DebugFieldNames()))
 				}
 				argList = append(argList, field.Interface(reflectArgs))
 			}
