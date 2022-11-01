@@ -1,24 +1,19 @@
 //go:build go1.8
 // +build go1.8
 
-// The following environment variables, if set, will be used:
-//
-//   - SQLX_SQLITE_DSN
-//   - SQLX_POSTGRES_DSN
-//   - SQLX_MYSQL_DSN
-//
-// Set any of these variables to 'skip' to skip them.  Note that for MySQL,
-// the string '?parseTime=True' will be appended to the DSN if it's not there
-// already.
 package sqlx
 
 import (
+	"database/sql"
 	"testing"
 
 	_ "github.com/go-sql-driver/mysql"
 	_ "github.com/lib/pq"
 	_ "github.com/mattn/go-sqlite3"
 )
+
+// note(jae): 2022-11-01
+// This file contains custom test cases for our SQLX port
 
 func TestSliceInterface(t *testing.T) {
 	type IPerson interface {
