@@ -14,6 +14,7 @@ import (
 )
 
 type DB struct {
+	*sql.DB
 	db sqlsw.DB
 	metadataInfo
 }
@@ -32,6 +33,7 @@ func NewDb(db *sql.DB, driverName string) *DB {
 	dbR.driverName = driverName
 	dbR.db = *dbSw
 	dbR.bindType = int(sqlsw.SQLX_GetBindType(&dbR.db))
+	dbR.DB = sqlsw.SQLX_DB(&dbR.db)
 	return dbR
 }
 
@@ -42,12 +44,15 @@ func Open(driverName, dataSourceName string) (*DB, error) {
 	}
 	dbSw, err := sqlsw.SQLX_CompatNewDB(dbDriver, driverName)
 	if err != nil {
+		// If failed compatibility initialization, close the driver
+		dbDriver.Close()
 		return nil, err
 	}
 	db := &DB{}
 	db.driverName = driverName
 	db.db = *dbSw
 	db.bindType = int(sqlsw.SQLX_GetBindType(&db.db))
+	db.DB = sqlsw.SQLX_DB(&db.db)
 	return db, err
 }
 
@@ -65,22 +70,11 @@ func Connect(driverName, dataSourceName string) (*DB, error) {
 	return db, nil
 }
 
-func (db *DB) Close() error {
-	return db.db.Close()
-}
-
-func (db *DB) Ping() error {
-	return db.db.PingContext(context.Background())
-}
-
-func (db *DB) PingContext(ctx context.Context) error {
-	return db.db.PingContext(ctx)
-}
-
 func newNamedStmt(namedStmt sqlsw.NamedStmt, metadata metadataInfo) *NamedStmt {
 	nstmt := &NamedStmt{}
 	nstmt.namedStmt = namedStmt
 	nstmt.metadataInfo = metadata
+	nstmt.Stmt = sqlsw.SQLX_NamedStmt(&nstmt.namedStmt)
 	return nstmt
 }
 
@@ -151,17 +145,17 @@ func (db *DB) DriverName() string {
 
 // QueryContext executes a query that returns rows, typically a SELECT.
 // The args are for any placeholder parameters in the query.
-func (db *DB) QueryContext(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error) {
-	return sqlsw.SQLX_DB(&db.db).QueryContext(ctx, query, args...)
-}
+//func (db *DB) QueryContext(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error) {
+//	return sqlsw.SQLX_DB(&db.db).QueryContext(ctx, query, args...)
+//}
 
-func (db *DB) QueryRow(query string, args ...interface{}) *sql.Row {
-	return db.QueryRowContext(context.Background(), query, args...)
-}
+//func (db *DB) QueryRow(query string, args ...interface{}) *sql.Row {
+//	return db.QueryRowContext(context.Background(), query, args...)
+//}
 
-func (db *DB) QueryRowContext(ctx context.Context, query string, args ...interface{}) *sql.Row {
-	return sqlsw.SQLX_DB(&db.db).QueryRowContext(ctx, query, args...)
-}
+// func (db *DB) QueryRowContext(ctx context.Context, query string, args ...interface{}) *sql.Row {
+//	return sqlsw.SQLX_DB(&db.db).QueryRowContext(ctx, query, args...)
+//}
 
 // QueryRowx queries the database and returns an *sqlx.Row.
 // Any placeholder parameters are replaced with supplied args.
@@ -213,30 +207,8 @@ func newTx(tx sqlsw.Tx, metadata metadataInfo) *Tx {
 	t := &Tx{}
 	t.underlying = tx
 	t.metadataInfo = metadata
+	t.Tx = sqlsw.SQLX_Tx(&t.underlying)
 	return t
-}
-
-// Begin starts a transaction. The default isolation level is dependent on
-// the driver.
-//
-// Begin uses context.Background internally; to specify the context, use
-// BeginTx.
-func (db *DB) Begin() (*sql.Tx, error) {
-	return sqlsw.SQLX_DB(&db.db).Begin()
-}
-
-// BeginTx starts a transaction.
-//
-// The provided context is used until the transaction is committed or rolled back.
-// If the context is canceled, the sql package will roll back
-// the transaction. Tx.Commit will return an error if the context provided to
-// BeginTx is canceled.
-//
-// The provided TxOptions is optional and may be nil if defaults should be used.
-// If a non-default isolation level is used that the driver doesn't support,
-// an error will be returned.
-func (db *DB) BeginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, error) {
-	return sqlsw.SQLX_DB(&db.db).BeginTx(ctx, opts)
 }
 
 // Beginx begins a transaction and returns an *sqlx.Tx instead of an *sql.Tx.
@@ -265,18 +237,18 @@ func (db *DB) BeginTxx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) {
 
 // Exec executes a named statement using the struct passed.
 // Any named placeholder parameters are replaced with fields from arg.
-func (db *DB) Exec(query string, args ...interface{}) (sql.Result, error) {
-	return sqlsw.SQLX_DB(&db.db).Exec(query, args...)
-}
+//func (db *DB) Exec(query string, args ...interface{}) (sql.Result, error) {
+//	return sqlsw.SQLX_DB(&db.db).Exec(query, args...)
+//}
 
 // Query executes a query that returns rows, typically a SELECT.
 // The args are for any placeholder parameters in the query.
 //
 // Query uses context.Background internally; to specify the context, use
 // QueryContext.
-func (db *DB) Query(query string, args ...interface{}) (*sql.Rows, error) {
-	return db.QueryContext(context.Background(), query, args...)
-}
+//func (db *DB) Query(query string, args ...interface{}) (*sql.Rows, error) {
+//	return db.QueryContext(context.Background(), query, args...)
+//}
 
 // QueryxContext queries the database and returns an *sqlx.Rows, typically a SELECT.
 // Any placeholder parameters are replaced with supplied args.
@@ -297,9 +269,9 @@ func (db *DB) QueryxContext(ctx context.Context, query string, args ...interface
 
 // ExecContext executes a query without returning any rows.
 // The args are for any placeholder parameters in the query.
-func (db *DB) ExecContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
-	return sqlsw.SQLX_DB(&db.db).ExecContext(ctx, query, args...)
-}
+//func (db *DB) ExecContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
+//	return sqlsw.SQLX_DB(&db.db).ExecContext(ctx, query, args...)
+//}
 
 // MustExec using this DB.
 // Any named placeholder parameters are replaced with fields from arg.
@@ -441,6 +413,7 @@ func (db *DB) Get(dest interface{}, query string, args ...interface{}) error {
 }
 
 type NamedStmt struct {
+	*sql.Stmt
 	namedStmt sqlsw.NamedStmt
 	metadataInfo
 }
@@ -559,6 +532,17 @@ func (stmt *Stmt) isUnsafe() bool {
 	return false
 }
 
+// QueryxContext queries the database and returns an *sqlx.Rows, typically a SELECT.
+// Any placeholder parameters are replaced with supplied args.
+func (stmt *Stmt) QueryxContext(ctx context.Context, args ...interface{}) (*Rows, error) {
+	sqlRows, err := stmt.stmt.QueryContext(ctx, args...)
+	if err != nil {
+		return nil, err
+	}
+	rowsUnderlying := sqlsw.SQLX_NewRows(sqlRows, sqlsw.SQLX_DefaultOptionsObject(sqlxcompat.Use{}), sqlsw.SQLX_DefaultCacheObject(sqlxcompat.Use{}))
+	return newRows(*rowsUnderlying, stmt.metadataInfo), nil
+}
+
 // SelectContext using the prepared statement.
 // Any placeholder parameters are replaced with supplied args.
 func (stmt *Stmt) SelectContext(ctx context.Context, dest interface{}, args ...interface{}) error {
@@ -615,6 +599,7 @@ func (stmt *Stmt) Queryx(query string, args ...interface{}) (*Rows, error) {
 // Rows is the result of a query. Its cursor starts before the first row
 // of the result set. Use Next to advance from row to row.
 type Rows struct {
+	*sql.Rows
 	rows sqlsw.Rows
 	metadataInfo
 }
@@ -623,6 +608,7 @@ func newRows(rows sqlsw.Rows, metadata metadataInfo) *Rows {
 	newRows := &Rows{}
 	newRows.rows = rows
 	newRows.metadataInfo = metadata
+	newRows.Rows = sqlsw.SQLX_Rows(&newRows.rows)
 	return newRows
 }
 
@@ -719,6 +705,7 @@ func GetContext(ctx context.Context, q QueryerContext, dest interface{}, query s
 
 // Tx is an in-progress database transaction.
 type Tx struct {
+	*sql.Tx
 	underlying sqlsw.Tx
 	metadataInfo
 }
@@ -808,6 +795,12 @@ func (tx *Tx) MustExecContext(ctx context.Context, query string, args ...interfa
 		panic(err)
 	}
 	return sqlResult
+}
+
+// NamedStmt returns a version of the prepared statement which runs
+// within a transaction.
+func (tx *Tx) NamedStmt(nstmt *NamedStmt) *NamedStmt {
+	return tx.NamedStmtContext(context.Background(), nstmt)
 }
 
 // NamedStmtContext returns a version of the prepared statement which runs

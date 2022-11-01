@@ -20,10 +20,8 @@ import (
 	"log"
 	"strings"
 	"testing"
-	"time"
 
 	_ "github.com/go-sql-driver/mysql"
-	"github.com/jmoiron/sqlx/reflectx"
 	_ "github.com/lib/pq"
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -160,7 +158,7 @@ func TestMissingNamesContextContext(t *testing.T) {
 			t.Fatal(err)
 		}
 		// its internal stmt should be marked unsafe
-		if !nstmt.Stmt.unsafe {
+		if !nstmt.isUnsafe() { // note(jae): 2022-11-01: original test checked: !nstmt.Stmt.unsafe {
 			t.Error("expected NamedStmt to be unsafe but its underlying stmt did not inherit safety")
 		}
 		pps = []PersonPlus{}
@@ -173,7 +171,7 @@ func TestMissingNamesContextContext(t *testing.T) {
 		}
 
 		// test it with a safe db
-		db.unsafe = false
+		db.testDisableUnsafe() // note(jae): 2022-11-01: SQLX did `db.unsafe = false``
 		if isUnsafe(db) {
 			t.Error("expected db to be safe but it isn't")
 		}
@@ -485,7 +483,10 @@ func TestNamedQueryContext(t *testing.T) {
 		// these are tests for #73;  they verify that named queries work if you've
 		// changed the db mapper.  This code checks both NamedQuery "ad-hoc" style
 		// queries and NamedStmt queries, which use different code paths internally.
-		old := *db.Mapper
+		//
+		// note(jae): 2022-11-01
+		// Not currently supporting Mapper
+		/* old := *db.Mapper
 
 		type JSONPerson struct {
 			FirstName sql.NullString `json:"FIRST"`
@@ -570,7 +571,7 @@ func TestNamedQueryContext(t *testing.T) {
 
 		check(t, rows)
 
-		db.Mapper = &old
+		db.Mapper = &old */
 
 		// Test nested structs
 		type Place struct {
@@ -1022,7 +1023,7 @@ func TestUsageContext(t *testing.T) {
 
 		// test name mapping
 		// THIS USED TO WORK BUT WILL NO LONGER WORK.
-		db.MapperFunc(strings.ToUpper)
+		/* db.MapperFunc(strings.ToUpper)
 		rsa := CPlace{}
 		err = db.GetContext(ctx, &rsa, "SELECT * FROM capplace;")
 		if err != nil {
@@ -1111,7 +1112,7 @@ func TestUsageContext(t *testing.T) {
 			if val.Valid && val.String != "New York" {
 				t.Errorf("expected single valid result to be `New York`, but got %s", val.String)
 			}
-		}
+		} */
 	})
 }
 
@@ -1343,7 +1344,9 @@ func TestEmbeddedLiteralsContext(t *testing.T) {
 	})
 }
 
-func TestConn(t *testing.T) {
+// todo(jae): 2022-11-01
+// Add support for *Conn
+/* func TestConn(t *testing.T) {
 	var schema = Schema{
 		create: `
 			CREATE TABLE tt_conn (
@@ -1424,3 +1427,4 @@ func TestConn(t *testing.T) {
 		}
 	})
 }
+*/

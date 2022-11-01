@@ -17,3 +17,25 @@ type QueryerContext interface {
 	QueryxContext(ctx context.Context, query string, args ...interface{}) (*Rows, error)
 	QueryRowxContext(ctx context.Context, query string, args ...interface{}) *Row
 }
+
+// ConnectContext to a database and verify with a ping.
+func ConnectContext(ctx context.Context, driverName, dataSourceName string) (*DB, error) {
+	db, err := Open(driverName, dataSourceName)
+	if err != nil {
+		return nil, err
+	}
+	if err := db.PingContext(ctx); err != nil {
+		db.Close()
+		return nil, err
+	}
+	return nil, err
+	// note(jae): 2022-11-01
+	// Original SQLX code does not close the DB connectin on a Ping error so we do
+	// that. Can revert if this causes backwards compat issues for users.
+	//db, err := Open(driverName, dataSourceName)
+	//if err != nil {
+	//	return nil, err
+	//}
+	//err = db.PingContext(ctx)
+	//return db, err
+}

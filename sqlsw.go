@@ -12,6 +12,8 @@ import (
 	"github.com/silbinarywolf/sqlsw/internal/sqlparser"
 )
 
+var errCannotUseSliceOfInterface = errors.New("ScanSlice: must pass a pointer to a slice value, cannot be slice of interfaces as there is no way to infer what implementation to use")
+
 type DB struct {
 	db *sql.DB
 	dataAndCaching
@@ -427,7 +429,16 @@ func (stmt *NamedStmt) NamedQueryRowContext(ctx context.Context, structOrMapOrSl
 func (rows *Rows) ScanSlice(ptrToSlice interface{}) error {
 	refType := dbreflect.TypeOf(ptrToSlice)
 	if refType.Kind() != reflect.Ptr {
-		return errors.New("ScanSlice: must pass a pointer, not a value")
+		if refType.Kind() != reflect.Slice {
+			return errors.New("ScanSlice: must pass a pointer to a slice value, not a " + refType.Kind().String())
+		}
+		switch refType.Elem().Kind() {
+		case reflect.Interface:
+			// note(jae): 2022-11-01
+			// Handle case if passed []InterfaceType
+			return errCannotUseSliceOfInterface
+		}
+		return errors.New("ScanSlice: must pass a pointer to a slice value")
 	}
 	refType = refType.Elem()
 	if kind := refType.Kind(); kind != reflect.Slice {
@@ -467,6 +478,12 @@ func (rows *Rows) ScanSlice(ptrToSlice interface{}) error {
 		}
 		structData, err := rows.reflector.GetStruct(sliceElem)
 		if err != nil {
+			switch kind := sliceElem.Kind(); kind {
+			case reflect.Interface:
+				// note(jae): 2022-11-01
+				// Handle case if passed *[]InterfaceType
+				return errors.New("ScanSlice: must pass a pointer to a slice value, cannot be slice of interfaces as there is no way to infer what implementation to use")
+			}
 			return err
 		}
 		var (
@@ -514,6 +531,18 @@ func (rows *Rows) ScanSlice(ptrToSlice interface{}) error {
 		for rows.Next() {
 			vp := dbreflect.New(sliceElem)
 			if err := rows.rows.Scan(vp.Interface()); err != nil {
+				switch kind := sliceElem.Kind(); kind {
+				case reflect.Interface:
+					// note(jae): 2022-11-01
+					// Handle case if passed *[]InterfaceType.
+					//
+					// Instead of returning "sql: expected 4 destination arguments in Scan, not 1"
+					// we instead tell the user what they did wrong.
+					//
+					// We check it here in the error case so that we only pay the overhead of checking
+					// for this if an error occurs.
+					return errCannotUseSliceOfInterface
+				}
 				return err
 			}
 			if isPtr {
@@ -693,46 +722,56 @@ func getArgumentListFromParameters(reflector *dbreflect.ReflectModule, parameter
 			// if the same parameter is used twice.
 			argList = make([]interface{}, 0, len(parameterNames)*arrayLen)
 			for i := 0; i < arrayLen; i++ {
-				switch args := mapOrStructOrSlice.(type) {
-				case map[string]interface{}:
-					for _, fieldName := range parameterNames {
-						v, ok := args[fieldName]
-						if !ok {
-							return nil, &missingValueError{fieldName: fieldName}
-						}
-						argList = append(argList, v)
-					}
-				case map[string]string:
-					for _, fieldName := range parameterNames {
-						v, ok := args[fieldName]
-						if !ok {
-							return nil, &missingValueError{fieldName: fieldName}
-						}
-						argList = append(argList, v)
-					}
-				default:
-					// note(jae): 2022-10-15
-					// Slow-path that SQLx uses on map types
-					//
-					// Benchmarking shows this style takes ~100x longer
-					//
-					// Type Assert:
-					// - 1000000000	         0.3219 ns/op	       0 B/op	       0 allocs/op
-					//
-					// ValueOf.Convert:
-					// - 44560135	         26.44 ns/op	       0 B/op	       0 allocs/op
-					if mtype := reflect.TypeOf(map[string]interface{}{}); reflect.TypeOf(args).ConvertibleTo(mtype) {
-						argMap := reflect.ValueOf(args).Convert(mtype).Interface().(map[string]interface{})
+				argValue := arrayValue.Index(i)
+				switch argValue.Kind() {
+				case reflect.Map:
+					switch args := argValue.Interface().(type) {
+					case map[string]interface{}:
 						for _, fieldName := range parameterNames {
-							v, ok := argMap[fieldName]
+							v, ok := args[fieldName]
 							if !ok {
 								return nil, &missingValueError{fieldName: fieldName}
 							}
 							argList = append(argList, v)
 						}
-					} else {
-						panic("TODO: Bind struct variables")
+					case map[string]string:
+						for _, fieldName := range parameterNames {
+							v, ok := args[fieldName]
+							if !ok {
+								return nil, &missingValueError{fieldName: fieldName}
+							}
+							argList = append(argList, v)
+						}
+					default:
+						// note(jae): 2022-10-15
+						// Slow-path that SQLx uses on map types
+						//
+						// Benchmarking shows this style takes ~100x longer
+						//
+						// Type Assert:
+						// - 1000000000	         0.3219 ns/op	       0 B/op	       0 allocs/op
+						//
+						// ValueOf.Convert:
+						// - 44560135	         26.44 ns/op	       0 B/op	       0 allocs/op
+						typ := reflect.TypeOf(args)
+						if mtype := reflect.TypeOf(map[string]interface{}{}); typ.ConvertibleTo(mtype) {
+							argMap := reflect.ValueOf(args).Convert(mtype).Interface().(map[string]interface{})
+							for _, fieldName := range parameterNames {
+								v, ok := argMap[fieldName]
+								if !ok {
+									return nil, &missingValueError{fieldName: fieldName}
+								}
+								argList = append(argList, v)
+							}
+						}
+						return nil, fmt.Errorf("invalid map type given: %T, unable to convert to map[string]interface{}", args)
 					}
+				case reflect.Pointer:
+					panic(fmt.Sprintf("TODO: Bind pointer struct variables for %s, given type: %T", argValue.Kind().String(), argValue.Interface()))
+				case reflect.Struct:
+					panic(fmt.Sprintf("TODO: Bind struct variables for %s, given type: %T", argValue.Kind().String(), argValue.Interface()))
+				default:
+					panic(fmt.Sprintf("Unhandled bind variables for type %s, given type: %T", argValue.Kind().String(), argValue.Interface()))
 				}
 			}
 		default:
